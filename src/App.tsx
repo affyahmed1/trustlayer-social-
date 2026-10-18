@@ -10,6 +10,7 @@ import { MessagingView } from './components/MessagingView';
 import { ActivityView } from './components/ActivityView';
 import { VerificationView } from './components/VerificationView';
 import { SettingsView } from './components/SettingsView';
+import { NetworkView } from './components/NetworkView';
 import { InvoiceDetailModal } from './components/InvoiceDetailModal';
 import { PaymentEvidenceModal } from './components/PaymentEvidenceModal';
 import { RejectInvoiceModal } from './components/RejectInvoiceModal';
@@ -61,6 +62,7 @@ const MainLayout: React.FC = () => {
               onOpenRejectModal={inv => setRejectInvoice(inv)}
             />
           )}
+          {currentTab === 'network' && <NetworkView />}
           {currentTab === 'messages' && <MessagingView />}
           {currentTab === 'activity' && <ActivityView />}
           {currentTab === 'verification' && <VerificationView />}

@@ -27,6 +27,7 @@ export type NavigationTab =
   | 'create'
   | 'issued'
   | 'received'
+  | 'network'
   | 'messages'
   | 'activity'
   | 'verification'

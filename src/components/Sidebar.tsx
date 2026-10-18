@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Building,
   RefreshCw,
+  Network,
 } from 'lucide-react';
 import { COUNTERPARTIES, CURRENT_BUSINESS } from '../data/mockData';
 
@@ -216,6 +217,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
             </div>
           )}
         </div>
+
+        {/* Network */}
+        <button
+          onClick={() => handleNav('network')}
+          className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all ${
+            currentTab === 'network'
+              ? 'bg-indigo-50 text-indigo-700 font-bold shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Network className="w-4 h-4 shrink-0 text-indigo-600" />
+          <span>Network</span>
+        </button>
 
         {/* Messages */}
         <button
