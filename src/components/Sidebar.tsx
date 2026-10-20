@@ -3,10 +3,10 @@ import { useApp, NavigationTab } from '../context/AppContext';
 import {
   Home,
   PlusCircle,
+  Package,
   ArrowUpRight,
   ArrowDownLeft,
   MessageSquare,
-  Activity,
   Settings,
   ShieldCheck,
   ChevronDown,
@@ -26,10 +26,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
   const {
     currentTab,
     setCurrentTab,
-    issuedFilter,
-    setIssuedFilter,
-    receivedFilter,
-    setReceivedFilter,
     activeProfile,
     setActiveProfile,
     threads,
@@ -39,9 +35,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
     setCurrentTab(tab);
     if (onCloseMobile) onCloseMobile();
   };
-
-  const [issuedExpanded, setIssuedExpanded] = useState(true);
-  const [receivedExpanded, setReceivedExpanded] = useState(true);
 
   // Total unread messages
   const unreadCount = threads.reduce((acc, t) => acc + (t.unreadCount || 0), 0);
@@ -101,6 +94,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
           <span>Home</span>
         </button>
 
+        {/* Sheet A: Inventory */}
+        <button
+          onClick={() => handleNav('inventory')}
+          className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all ${
+            currentTab === 'inventory'
+              ? 'bg-indigo-50 text-indigo-700 font-bold shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Package className="w-4 h-4 shrink-0 text-indigo-600" />
+          <span>Inventory</span>
+        </button>
+
+        {/* Sheet B: Issued Invoices */}
+        <button
+          onClick={() => handleNav('issued_invoices')}
+          className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all ${
+            currentTab === 'issued_invoices'
+              ? 'bg-indigo-50 text-indigo-700 font-bold shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <ArrowUpRight className="w-4 h-4 shrink-0 text-blue-600" />
+          <span>Issued Invoices</span>
+        </button>
+
+        {/* Sheet C: Received Invoices */}
+        <button
+          onClick={() => handleNav('received_invoices')}
+          className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all ${
+            currentTab === 'received_invoices'
+              ? 'bg-indigo-50 text-indigo-700 font-bold shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <ArrowDownLeft className="w-4 h-4 shrink-0 text-emerald-600" />
+          <span>Received Invoices</span>
+        </button>
+
         {/* Create Invoice */}
         <button
           onClick={() => handleNav('create')}
@@ -113,110 +145,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
           <PlusCircle className="w-4 h-4 shrink-0" />
           <span>Create Invoice</span>
         </button>
-
-        {/* Issued Invoices Expandable Group */}
-        <div className="pt-2">
-          <div
-            onClick={() => {
-              setCurrentTab('issued');
-              setIssuedExpanded(!issuedExpanded);
-            }}
-            className={`flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all ${
-              currentTab === 'issued'
-                ? 'bg-indigo-50/70 text-indigo-700 font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              <ArrowUpRight className="w-4 h-4 shrink-0 text-slate-500" />
-              <span>Issued Invoices</span>
-            </div>
-            {issuedExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            )}
-          </div>
-
-          {issuedExpanded && (
-            <div className="pl-9 pr-2 py-1 space-y-0.5">
-              {[
-                { id: 'all', label: 'All Issued' },
-                { id: 'paid', label: 'Paid' },
-                { id: 'unpaid', label: 'Unpaid' },
-                { id: 'due_today', label: 'Due Today' },
-                { id: 'overdue', label: 'Overdue' },
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    setIssuedFilter(f.id as any);
-                    setCurrentTab('issued');
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-colors ${
-                    currentTab === 'issued' && issuedFilter === f.id
-                      ? 'text-indigo-700 font-bold bg-indigo-50/50'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Received Invoices Expandable Group */}
-        <div className="pt-1">
-          <div
-            onClick={() => {
-              setCurrentTab('received');
-              setReceivedExpanded(!receivedExpanded);
-            }}
-            className={`flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all ${
-              currentTab === 'received'
-                ? 'bg-indigo-50/70 text-indigo-700 font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              <ArrowDownLeft className="w-4 h-4 shrink-0 text-slate-500" />
-              <span>Received Invoices</span>
-            </div>
-            {receivedExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            )}
-          </div>
-
-          {receivedExpanded && (
-            <div className="pl-9 pr-2 py-1 space-y-0.5">
-              {[
-                { id: 'all', label: 'All Received' },
-                { id: 'pending_review', label: 'Pending Review' },
-                { id: 'accepted', label: 'Accepted' },
-                { id: 'rejected', label: 'Rejected' },
-                { id: 'paid', label: 'Paid' },
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    setReceivedFilter(f.id as any);
-                    setCurrentTab('received');
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-colors ${
-                    currentTab === 'received' && receivedFilter === f.id
-                      ? 'text-indigo-700 font-bold bg-indigo-50/50'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
 
         {/* Network */}
         <button
@@ -262,19 +190,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
         >
           <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
           <span>Verify Record</span>
-        </button>
-
-        {/* Activity */}
-        <button
-          onClick={() => handleNav('activity')}
-          className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all ${
-            currentTab === 'activity'
-              ? 'bg-indigo-50 text-indigo-700 font-bold shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Activity className="w-4 h-4 shrink-0" />
-          <span>Activity</span>
         </button>
 
         {/* Settings */}

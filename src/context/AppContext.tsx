@@ -8,12 +8,32 @@ import {
   PaymentEvidence,
 } from '../types';
 import {
+  InventoryItem,
+  InventoryMovement,
+  IssuedInvoiceRecord,
+  ReceivedInvoiceRecord,
+  IntelligenceReport,
+} from '../types/inventory';
+import {
   CURRENT_BUSINESS,
   COUNTERPARTIES,
   INITIAL_INVOICES,
   INITIAL_THREADS,
   INITIAL_ACTIVITY,
 } from '../data/mockData';
+import {
+  INITIAL_INVENTORY,
+  INITIAL_MOVEMENTS,
+  INITIAL_ISSUED_INVOICES,
+  INITIAL_RECEIVED_INVOICES,
+} from '../data/seedInventoryData';
+import {
+  processApproveReceivedInvoice,
+  processApproveIssuedInvoice,
+  processRejectInvoice,
+  processManualStockAdjustment,
+} from '../services/inventoryService';
+import { runRecursiveIntelligenceReconciliation } from '../services/intelligenceService';
 import {
   generateTrustLayerReference,
   createCanonicalInvoicePayload,
@@ -25,21 +45,17 @@ import {
 export type NavigationTab =
   | 'home'
   | 'create'
-  | 'issued'
-  | 'received'
+  | 'inventory'
+  | 'issued_invoices'
+  | 'received_invoices'
   | 'network'
   | 'messages'
-  | 'activity'
   | 'verification'
   | 'settings';
 
 interface AppContextType {
   currentTab: NavigationTab;
   setCurrentTab: (tab: NavigationTab) => void;
-  issuedFilter: 'all' | 'paid' | 'unpaid' | 'due_today' | 'overdue';
-  setIssuedFilter: (filter: 'all' | 'paid' | 'unpaid' | 'due_today' | 'overdue') => void;
-  receivedFilter: 'all' | 'pending_review' | 'accepted' | 'rejected' | 'paid';
-  setReceivedFilter: (filter: 'all' | 'pending_review' | 'accepted' | 'rejected' | 'paid') => void;
 
   invoices: Invoice[];
   threads: MessageThread[];
@@ -47,6 +63,22 @@ interface AppContextType {
   activeProfile: BusinessEntity;
   setActiveProfile: (profile: BusinessEntity) => void;
   counterparties: BusinessEntity[];
+
+  // Three-Sheet Architecture & Intelligence State
+  inventoryItems: InventoryItem[];
+  inventoryMovements: InventoryMovement[];
+  issuedInvoices: IssuedInvoiceRecord[];
+  receivedInvoices: ReceivedInvoiceRecord[];
+  selectedIntelligenceReport: IntelligenceReport | null;
+  setSelectedIntelligenceReport: (report: IntelligenceReport | null) => void;
+
+  // Inventory & Intelligence Actions
+  approveReceivedInvoice: (invoiceId: string, actor: string) => { updatedInvoice: ReceivedInvoiceRecord | null; error?: string };
+  approveIssuedInvoice: (invoiceId: string, actor: string) => { updatedInvoice: IssuedInvoiceRecord | null; error?: string };
+  rejectInvoiceRecord: (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => void;
+  reverseInvoiceRecord: (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => void;
+  adjustStock: (productId: string, businessId: string, delta: number, reason: string, actor: string) => void;
+  runIntelligenceCheck: (invoiceId: string, type: 'issued' | 'received') => IntelligenceReport;
 
   // Selected invoice for detail preview/modal
   selectedInvoice: Invoice | null;
@@ -81,8 +113,6 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('home');
-  const [issuedFilter, setIssuedFilter] = useState<'all' | 'paid' | 'unpaid' | 'due_today' | 'overdue'>('all');
-  const [receivedFilter, setReceivedFilter] = useState<'all' | 'pending_review' | 'accepted' | 'rejected' | 'paid'>('all');
 
   const [activeProfile, setActiveProfile] = useState<BusinessEntity>(() => {
     try {
@@ -119,6 +149,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_ACTIVITY;
     }
   });
+
+  // ── Three-Sheet Architecture State ──
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('trustlayer_inventory_items');
+      return saved ? JSON.parse(saved) : INITIAL_INVENTORY;
+    } catch {
+      return INITIAL_INVENTORY;
+    }
+  });
+
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>(() => {
+    try {
+      const saved = localStorage.getItem('trustlayer_inventory_movements');
+      return saved ? JSON.parse(saved) : INITIAL_MOVEMENTS;
+    } catch {
+      return INITIAL_MOVEMENTS;
+    }
+  });
+
+  const [issuedInvoices, setIssuedInvoices] = useState<IssuedInvoiceRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('trustlayer_issued_invoices');
+      return saved ? JSON.parse(saved) : INITIAL_ISSUED_INVOICES;
+    } catch {
+      return INITIAL_ISSUED_INVOICES;
+    }
+  });
+
+  const [receivedInvoices, setReceivedInvoices] = useState<ReceivedInvoiceRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('trustlayer_received_invoices');
+      return saved ? JSON.parse(saved) : INITIAL_RECEIVED_INVOICES;
+    } catch {
+      return INITIAL_RECEIVED_INVOICES;
+    }
+  });
+
+  const [selectedIntelligenceReport, setSelectedIntelligenceReport] = useState<IntelligenceReport | null>(null);
+
+  // Persistence effects
+  useEffect(() => {
+    localStorage.setItem('trustlayer_inventory_items', JSON.stringify(inventoryItems));
+  }, [inventoryItems]);
+
+  useEffect(() => {
+    localStorage.setItem('trustlayer_inventory_movements', JSON.stringify(inventoryMovements));
+  }, [inventoryMovements]);
+
+  useEffect(() => {
+    localStorage.setItem('trustlayer_issued_invoices', JSON.stringify(issuedInvoices));
+  }, [issuedInvoices]);
+
+  useEffect(() => {
+    localStorage.setItem('trustlayer_received_invoices', JSON.stringify(receivedInvoices));
+  }, [receivedInvoices]);
 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -500,15 +586,175 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  // ── Three-Sheet Architecture Actions ──
+  const approveReceivedInvoice = (invoiceId: string, actor: string) => {
+    const res = processApproveReceivedInvoice(invoiceId, actor, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+    });
+    if (res.error) return { updatedInvoice: null, error: res.error };
+    setInventoryItems(res.state.inventory);
+    setInventoryMovements(res.state.movements);
+    setReceivedInvoices(res.state.receivedInvoices);
+
+    // Automatic recursive intelligence reconciliation
+    const intelReport = runRecursiveIntelligenceReconciliation(invoiceId, 'received', res.state);
+    setReceivedInvoices(prev =>
+      prev.map(inv => (inv.id === invoiceId ? { ...inv, verificationStatus: intelReport.overallResult as any } : inv))
+    );
+    return { updatedInvoice: res.updatedInvoice };
+  };
+
+  const approveIssuedInvoice = (invoiceId: string, actor: string) => {
+    const res = processApproveIssuedInvoice(invoiceId, actor, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+    });
+    if (res.error) return { updatedInvoice: null, error: res.error };
+    setInventoryItems(res.state.inventory);
+    setInventoryMovements(res.state.movements);
+    setIssuedInvoices(res.state.issuedInvoices);
+
+    // Automatic recursive intelligence reconciliation
+    const intelReport = runRecursiveIntelligenceReconciliation(invoiceId, 'issued', res.state);
+    setIssuedInvoices(prev =>
+      prev.map(inv => (inv.id === invoiceId ? { ...inv, verificationStatus: intelReport.overallResult as any } : inv))
+    );
+    return { updatedInvoice: res.updatedInvoice };
+  };
+
+  const rejectInvoiceRecord = (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => {
+    const res = processRejectInvoice(type, invoiceId, reason, actor, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+    });
+    if (type === 'issued') {
+      setIssuedInvoices(res.state.issuedInvoices);
+    } else {
+      setReceivedInvoices(res.state.receivedInvoices);
+    }
+  };
+
+  const reverseInvoiceRecord = (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => {
+    const timestamp = new Date().toISOString();
+    if (type === 'issued') {
+      const inv = issuedInvoices.find(i => i.id === invoiceId);
+      if (!inv || !inv.inventoryMovementApplied) return;
+      const compensating: InventoryMovement = {
+        id: `MOV-REV-${Date.now()}`,
+        businessId: inv.issuingBusinessId,
+        businessUsername: inv.issuingBusinessUsername,
+        productId: inv.productId,
+        type: 'RETURN_INWARD',
+        quantity: inv.quantitySold,
+        referenceInvoiceId: inv.id,
+        referenceInvoiceNumber: inv.originalInvoiceNumber,
+        timestamp,
+        actor,
+        notes: `Reversal return inward: ${reason}`,
+        idempotencyKey: `IDEMP-REV-ISSUED-${inv.id}`,
+      };
+      const newMovements = [compensating, ...inventoryMovements];
+      setInventoryMovements(newMovements);
+      setIssuedInvoices(prev =>
+        prev.map(i => (i.id === invoiceId ? { ...i, decisionStatus: 'Reversed', rejectionReason: reason, updatedAt: timestamp } : i))
+      );
+      setInventoryItems(prev =>
+        prev.map(it => {
+          if (it.productId === inv.productId && it.businessId === inv.issuingBusinessId) {
+            return {
+              ...it,
+              currentStock: it.currentStock + inv.quantitySold,
+              totalApprovedSales: Math.max(0, it.totalApprovedSales - inv.quantitySold),
+              lastUpdated: timestamp,
+            };
+          }
+          return it;
+        })
+      );
+    } else {
+      const inv = receivedInvoices.find(i => i.id === invoiceId);
+      if (!inv || !inv.inventoryMovementApplied) return;
+      const compensating: InventoryMovement = {
+        id: `MOV-REV-${Date.now()}`,
+        businessId: inv.receivingBusinessId,
+        businessUsername: inv.receivingBusinessUsername,
+        productId: inv.productId,
+        type: 'RETURN_OUTWARD',
+        quantity: -inv.quantityPurchased,
+        referenceInvoiceId: inv.id,
+        referenceInvoiceNumber: inv.originalInvoiceNumber,
+        timestamp,
+        actor,
+        notes: `Reversal return outward: ${reason}`,
+        idempotencyKey: `IDEMP-REV-REC-${inv.id}`,
+      };
+      const newMovements = [compensating, ...inventoryMovements];
+      setInventoryMovements(newMovements);
+      setReceivedInvoices(prev =>
+        prev.map(i => (i.id === invoiceId ? { ...i, decisionStatus: 'Reversed', rejectionReason: reason, updatedAt: timestamp } : i))
+      );
+      setInventoryItems(prev =>
+        prev.map(it => {
+          if (it.productId === inv.productId && it.businessId === inv.receivingBusinessId) {
+            return {
+              ...it,
+              currentStock: Math.max(0, it.currentStock - inv.quantityPurchased),
+              totalApprovedPurchases: Math.max(0, it.totalApprovedPurchases - inv.quantityPurchased),
+              lastUpdated: timestamp,
+            };
+          }
+          return it;
+        })
+      );
+    }
+  };
+
+  const adjustStock = (productId: string, businessId: string, delta: number, reason: string, actor: string) => {
+    const res = processManualStockAdjustment(productId, businessId, activeProfile.username, delta, reason, actor, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+    });
+    setInventoryItems(res.state.inventory);
+    setInventoryMovements(res.state.movements);
+  };
+
+  const runIntelligenceCheck = (invoiceId: string, type: 'issued' | 'received'): IntelligenceReport => {
+    const report = runRecursiveIntelligenceReconciliation(invoiceId, type, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+    });
+    setSelectedIntelligenceReport(report);
+    return report;
+  };
+
   const resetDemoData = () => {
     setInvoices(INITIAL_INVOICES);
     setThreads(INITIAL_THREADS);
     setActivities(INITIAL_ACTIVITY);
+    setInventoryItems(INITIAL_INVENTORY);
+    setInventoryMovements(INITIAL_MOVEMENTS);
+    setIssuedInvoices(INITIAL_ISSUED_INVOICES);
+    setReceivedInvoices(INITIAL_RECEIVED_INVOICES);
     setActiveProfile(CURRENT_BUSINESS);
     localStorage.removeItem('trustlayer_invoices');
     localStorage.removeItem('trustlayer_threads');
     localStorage.removeItem('trustlayer_activities');
     localStorage.removeItem('trustlayer_profile');
+    localStorage.removeItem('trustlayer_inventory_items');
+    localStorage.removeItem('trustlayer_inventory_movements');
+    localStorage.removeItem('trustlayer_issued_invoices');
+    localStorage.removeItem('trustlayer_received_invoices');
   };
 
   return (
@@ -516,10 +762,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentTab,
         setCurrentTab,
-        issuedFilter,
-        setIssuedFilter,
-        receivedFilter,
-        setReceivedFilter,
         invoices,
         threads,
         activities,
@@ -544,6 +786,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         globalSearch,
         setGlobalSearch,
         resetDemoData,
+
+        // Three-Sheet & Intelligence values
+        inventoryItems,
+        inventoryMovements,
+        issuedInvoices,
+        receivedInvoices,
+        selectedIntelligenceReport,
+        setSelectedIntelligenceReport,
+        approveReceivedInvoice,
+        approveIssuedInvoice,
+        rejectInvoiceRecord,
+        reverseInvoiceRecord,
+        adjustStock,
+        runIntelligenceCheck,
       }}
     >
       {children}

@@ -170,6 +170,7 @@ export interface ActivityEvent {
   invoiceId?: string;
   invoiceRef?: string;
   invoiceNumber?: string;
+  entityName?: string;
   actor: string;
   timestamp: string;
   details: string;

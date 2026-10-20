@@ -401,7 +401,7 @@ export const InvoiceBuilder: React.FC = () => {
     setTimeout(() => {
       setEditingInvoice(null);
       setSelectedInvoice(reg);
-      setCurrentTab('issued');
+      setCurrentTab('home');
     }, 1500);
   };
 
@@ -419,7 +419,7 @@ export const InvoiceBuilder: React.FC = () => {
     });
     setTimeout(() => {
       setEditingInvoice(null);
-      setCurrentTab('issued');
+      setCurrentTab('home');
     }, 1500);
   };
 

@@ -4,10 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { InvoiceBuilder } from './components/InvoiceBuilder';
-import { IssuedInvoices } from './components/IssuedInvoices';
-import { ReceivedInvoices } from './components/ReceivedInvoices';
 import { MessagingView } from './components/MessagingView';
-import { ActivityView } from './components/ActivityView';
 import { VerificationView } from './components/VerificationView';
 import { SettingsView } from './components/SettingsView';
 import { NetworkView } from './components/NetworkView';
@@ -55,16 +52,8 @@ const MainLayout: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {currentTab === 'home' && <HomeDashboard />}
           {currentTab === 'create' && <InvoiceBuilder />}
-          {currentTab === 'issued' && <IssuedInvoices />}
-          {currentTab === 'received' && (
-            <ReceivedInvoices
-              onOpenPaymentEvidenceModal={inv => setEvidenceInvoice(inv)}
-              onOpenRejectModal={inv => setRejectInvoice(inv)}
-            />
-          )}
           {currentTab === 'network' && <NetworkView />}
           {currentTab === 'messages' && <MessagingView />}
-          {currentTab === 'activity' && <ActivityView />}
           {currentTab === 'verification' && <VerificationView />}
           {currentTab === 'settings' && <SettingsView />}
         </main>

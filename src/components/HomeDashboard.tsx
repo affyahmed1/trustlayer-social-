@@ -1,147 +1,55 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { formatCurrency } from '../utils/finance';
+import { getAuthorizedDirectConnections, BusinessCategory } from '../services/networkService';
 import {
-  Plus,
   ShieldCheck,
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Search,
+  Network,
+  ArrowRight,
+  Mail,
+  MapPin,
   ChevronRight,
-  TrendingUp,
-  FileText,
-  AlertCircle,
-  ExternalLink,
+  UserCheck,
+  FileCheck2,
+  GitBranch,
 } from 'lucide-react';
 
 export const HomeDashboard: React.FC = () => {
   const {
-    invoices,
-    activities,
     setCurrentTab,
-    setIssuedFilter,
-    setReceivedFilter,
-    setSelectedInvoice,
+    activeProfile,
   } = useApp();
 
-  // Summary Metrics computed from actual records
-  const stats = useMemo(() => {
-    // Issued invoices (where issuer is current business)
-    const issued = invoices.filter(i => i.issuer.username === '@apexsupply' && i.status !== 'draft');
-    const received = invoices.filter(i => i.buyer.username === '@apexsupply');
+  // Network connection metrics for the authenticated business
+  const directConnections = useMemo(() => {
+    return getAuthorizedDirectConnections(activeProfile.username);
+  }, [activeProfile.username]);
 
-    const totalIssuedAmt = issued.reduce((acc, i) => acc + (i.financials?.total || 0), 0);
-    const totalReceivedAmt = received.reduce((acc, i) => acc + (i.financials?.total || 0), 0);
+  const categories: { key: BusinessCategory; label: string; desc: string }[] = [
+    { key: 'DISTRIBUTOR', label: 'Distributors', desc: 'Direct regional distributors' },
+    { key: 'WHOLESALER', label: 'Wholesalers', desc: 'Authorized wholesale trade partners' },
+    { key: 'SUPPLIER', label: 'Suppliers', desc: 'Material & component suppliers' },
+    { key: 'SELLER', label: 'Sellers', desc: 'Commercial retail & outlet sellers' },
+  ];
 
-    const paidInvoices = invoices.filter(i => i.status === 'paid');
-    const paidAmt = paidInvoices.reduce((acc, i) => acc + (i.financials?.total || 0), 0);
-
-    const unpaidInvoices = invoices.filter(
-      i => ['registered', 'sent', 'pending_review', 'due_today', 'overdue'].includes(i.status)
+  const totalConnectionsCount = useMemo(() => {
+    return (
+      directConnections.DISTRIBUTOR.length +
+      directConnections.WHOLESALER.length +
+      directConnections.SUPPLIER.length +
+      directConnections.SELLER.length
     );
-    const unpaidAmt = unpaidInvoices.reduce((acc, i) => acc + (i.financials?.amountDue || 0), 0);
-
-    const dueToday = invoices.filter(i => i.status === 'due_today');
-    const dueTodayAmt = dueToday.reduce((acc, i) => acc + (i.financials?.amountDue || 0), 0);
-
-    const overdue = invoices.filter(i => i.status === 'overdue');
-    const overdueAmt = overdue.reduce((acc, i) => acc + (i.financials?.amountDue || 0), 0);
-
-    const pendingReview = invoices.filter(i => i.status === 'pending_review');
-    const pendingReviewAmt = pendingReview.reduce((acc, i) => acc + (i.financials?.total || 0), 0);
-
-    return {
-      totalIssued: { count: issued.length, amount: totalIssuedAmt },
-      totalReceived: { count: received.length, amount: totalReceivedAmt },
-      paid: { count: paidInvoices.length, amount: paidAmt },
-      unpaid: { count: unpaidInvoices.length, amount: unpaidAmt },
-      dueToday: { count: dueToday.length, amount: dueTodayAmt },
-      overdue: { count: overdue.length, amount: overdueAmt },
-      pendingReview: { count: pendingReview.length, amount: pendingReviewAmt },
-    };
-  }, [invoices]);
-
-  // Actionable Attention Items
-  const attentionItems = useMemo(() => {
-    const list: {
-      id: string;
-      title: string;
-      subtitle: string;
-      type: 'due_today' | 'overdue' | 'pending_review';
-      invoice: (typeof invoices)[0];
-    }[] = [];
-
-    invoices.forEach(inv => {
-      if (inv.status === 'due_today') {
-        list.push({
-          id: `att-dt-${inv.id}`,
-          title: `Invoice Due Today: ${inv.invoiceNumber}`,
-          subtitle: `${inv.buyer.name} • ${formatCurrency(inv.financials.amountDue, inv.currency)}`,
-          type: 'due_today',
-          invoice: inv,
-        });
-      } else if (inv.status === 'overdue') {
-        list.push({
-          id: `att-od-${inv.id}`,
-          title: `Overdue Invoice: ${inv.invoiceNumber}`,
-          subtitle: `${inv.buyer.name} • ${formatCurrency(inv.financials.amountDue, inv.currency)}`,
-          type: 'overdue',
-          invoice: inv,
-        });
-      } else if (inv.status === 'pending_review') {
-        list.push({
-          id: `att-pr-${inv.id}`,
-          title: `Payment Claim Awaiting Review`,
-          subtitle: `${inv.reference || inv.invoiceNumber} • ${formatCurrency(inv.financials.total, inv.currency)}`,
-          type: 'pending_review',
-          invoice: inv,
-        });
-      }
-    });
-
-    return list;
-  }, [invoices]);
-
-  // Recent invoices list (up to 5)
-  const recentInvoices = useMemo(() => {
-    return invoices.slice(0, 5);
-  }, [invoices]);
-
-  const handleCardClick = (target: string) => {
-    if (target === 'issued') {
-      setIssuedFilter('all');
-      setCurrentTab('issued');
-    } else if (target === 'received') {
-      setReceivedFilter('all');
-      setCurrentTab('received');
-    } else if (target === 'paid') {
-      setIssuedFilter('paid');
-      setCurrentTab('issued');
-    } else if (target === 'due_today') {
-      setIssuedFilter('due_today');
-      setCurrentTab('issued');
-    } else if (target === 'overdue') {
-      setIssuedFilter('overdue');
-      setCurrentTab('issued');
-    } else if (target === 'pending_review') {
-      setReceivedFilter('pending_review');
-      setCurrentTab('received');
-    }
-  };
+  }, [directConnections]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Banner / Hero Bar */}
+      {/* ── TOP HERO BANNER ── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
-            Financial Records Overview
+            Business Dashboard
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Verified invoice exchange and payment evidence registry.
+            Verified cryptographic business identity and direct network partner management.
           </p>
         </div>
 
@@ -155,310 +63,187 @@ export const HomeDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setCurrentTab('create')}
+            onClick={() => setCurrentTab('network')}
             className="inline-flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 active:scale-98 transition-all shadow-xs"
           >
-            <Plus className="w-4 h-4" />
-            <span>Create Invoice</span>
+            <Network className="w-4 h-4" />
+            <span>View Network</span>
           </button>
         </div>
       </div>
 
-      {/* Summary KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        {/* Total Issued */}
-        <div
-          onClick={() => handleCardClick('issued')}
-          className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all"
-        >
-          <div className="flex items-center justify-between text-slate-400 mb-1.5">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Issued</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-indigo-500" />
-          </div>
-          <div className="text-base font-bold text-slate-900">
-            {formatCurrency(stats.totalIssued.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            {stats.totalIssued.count} {stats.totalIssued.count === 1 ? 'record' : 'records'}
-          </div>
-        </div>
-
-        {/* Total Received */}
-        <div
-          onClick={() => handleCardClick('received')}
-          className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all"
-        >
-          <div className="flex items-center justify-between text-slate-400 mb-1.5">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Received</span>
-            <ArrowDownLeft className="w-3.5 h-3.5 text-blue-500" />
-          </div>
-          <div className="text-base font-bold text-slate-900">
-            {formatCurrency(stats.totalReceived.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            {stats.totalReceived.count} {stats.totalReceived.count === 1 ? 'record' : 'records'}
-          </div>
-        </div>
-
-        {/* Paid */}
-        <div
-          onClick={() => handleCardClick('paid')}
-          className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-sm cursor-pointer transition-all"
-        >
-          <div className="flex items-center justify-between text-slate-400 mb-1.5">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Paid</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-          </div>
-          <div className="text-base font-bold text-emerald-600">
-            {formatCurrency(stats.paid.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            {stats.paid.count} {stats.paid.count === 1 ? 'invoice' : 'invoices'}
-          </div>
-        </div>
-
-        {/* Unpaid */}
-        <div
-          onClick={() => handleCardClick('issued')}
-          className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-400 hover:shadow-sm cursor-pointer transition-all"
-        >
-          <div className="flex items-center justify-between text-slate-400 mb-1.5">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Unpaid</span>
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-          </div>
-          <div className="text-base font-bold text-slate-900">
-            {formatCurrency(stats.unpaid.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            {stats.unpaid.count} outstanding
-          </div>
-        </div>
-
-        {/* Due Today */}
-        <div
-          onClick={() => handleCardClick('due_today')}
-          className={`p-3.5 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            stats.dueToday.count > 0
-              ? 'bg-amber-50/60 border-amber-200 hover:border-amber-400'
-              : 'bg-white border-slate-200/80'
-          }`}
-        >
-          <div className="flex items-center justify-between text-amber-600 mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Due Today</span>
-            <Clock className="w-3.5 h-3.5 text-amber-500" />
-          </div>
-          <div className="text-base font-bold text-amber-700">
-            {formatCurrency(stats.dueToday.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-amber-600 mt-1">
-            {stats.dueToday.count} requiring action
-          </div>
-        </div>
-
-        {/* Overdue */}
-        <div
-          onClick={() => handleCardClick('overdue')}
-          className={`p-3.5 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            stats.overdue.count > 0
-              ? 'bg-rose-50/60 border-rose-200 hover:border-rose-400'
-              : 'bg-white border-slate-200/80'
-          }`}
-        >
-          <div className="flex items-center justify-between text-rose-600 mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Overdue</span>
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
-          </div>
-          <div className="text-base font-bold text-rose-700">
-            {formatCurrency(stats.overdue.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-rose-600 mt-1">
-            {stats.overdue.count} past maturity
-          </div>
-        </div>
-
-        {/* Pending Review */}
-        <div
-          onClick={() => handleCardClick('pending_review')}
-          className={`p-3.5 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            stats.pendingReview.count > 0
-              ? 'bg-indigo-50/60 border-indigo-200 hover:border-indigo-400'
-              : 'bg-white border-slate-200/80'
-          }`}
-        >
-          <div className="flex items-center justify-between text-indigo-600 mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Review</span>
-            <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
-          </div>
-          <div className="text-base font-bold text-indigo-900">
-            {formatCurrency(stats.pendingReview.amount, 'USD')}
-          </div>
-          <div className="text-[11px] text-indigo-600 mt-1">
-            {stats.pendingReview.count} payment claim
-          </div>
-        </div>
-      </div>
-
-      {/* Action Items Alert Section */}
-      {attentionItems.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Attention Required ({attentionItems.length})
-              </h2>
+      {/* ── AUTHENTICATED BUSINESS IDENTITY CARD ── */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
+              {activeProfile.name.charAt(0)}
             </div>
-            <span className="text-[11px] text-slate-400">Actionable items requiring review</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {attentionItems.map(item => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  setSelectedInvoice(item.invoice);
-                }}
-                className="p-3 rounded-lg border border-slate-200 hover:border-slate-400 bg-slate-50/60 hover:bg-white cursor-pointer transition-all flex items-center justify-between"
-              >
-                <div className="space-y-0.5">
-                  <div className="text-xs font-bold text-slate-800">{item.title}</div>
-                  <div className="text-[11px] text-slate-500">{item.subtitle}</div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Main Split: Recent Invoices & Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Recent Invoices Table: 8 cols */}
-        <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Recent Invoices</h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Latest commercial records registered and exchanged.
-              </p>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  {activeProfile.name}
+                </h2>
+                {activeProfile.verified && (
+                  <span className="inline-flex items-center text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                    Verified Entity Registry
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2 mt-0.5 text-xs text-slate-500 font-mono">
+                <span>{activeProfile.username}</span>
+                <span className="text-slate-300">&bull;</span>
+                <span className="text-slate-600 font-semibold">{activeProfile.id}</span>
+                <span className="text-slate-300">&bull;</span>
+                <span className="text-slate-500 font-sans">{activeProfile.country}</span>
+              </div>
             </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
             <button
-              onClick={() => setCurrentTab('issued')}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
+              onClick={() => setCurrentTab('settings')}
+              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-50/70 border border-transparent hover:border-indigo-100 transition-all flex items-center space-x-1"
             >
-              <span>View All</span>
+              <span>Organization Profile</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  <th className="py-2.5 px-4">Reference / ID</th>
-                  <th className="py-2.5 px-4">Counterparty</th>
-                  <th className="py-2.5 px-4">Due Date</th>
-                  <th className="py-2.5 px-4 text-right">Amount</th>
-                  <th className="py-2.5 px-4">Status</th>
-                  <th className="py-2.5 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentInvoices.map(inv => {
-                  const isIssuer = inv.issuer.username === '@apexsupply';
-                  const counterparty = isIssuer ? inv.buyer : inv.issuer;
+        {/* Contact & Registration Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 text-xs text-slate-600">
+          {activeProfile.contactPerson && (
+            <div className="flex items-center space-x-2">
+              <UserCheck className="w-4 h-4 text-slate-400 shrink-0" />
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium">Primary Contact</span>
+                <span className="font-semibold text-slate-800">{activeProfile.contactPerson}</span>
+              </div>
+            </div>
+          )}
 
-                  return (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-slate-50/70 cursor-pointer transition-colors"
-                      onClick={() => setSelectedInvoice(inv)}
-                    >
-                      <td className="py-3 px-4">
-                        <div className="font-mono font-bold text-slate-900">
-                          {inv.reference || 'DRAFT'}
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-mono">
-                          {inv.invoiceNumber}
-                        </div>
-                      </td>
+          {activeProfile.email && (
+            <div className="flex items-center space-x-2">
+              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium">Official Email</span>
+                <span className="font-mono text-slate-800">{activeProfile.email}</span>
+              </div>
+            </div>
+          )}
 
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{counterparty.name}</div>
-                        <div className="text-[11px] text-slate-400">{counterparty.username}</div>
-                      </td>
+          {activeProfile.address && (
+            <div className="flex items-center space-x-2">
+              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium">Registered Address</span>
+                <span className="text-slate-800 truncate block max-w-xs">{activeProfile.address}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
-                      <td className="py-3 px-4 text-slate-600 font-medium">
-                        {inv.dueDate}
-                      </td>
+      {/* ── NETWORK DIRECT CONNECTIONS SUMMARY GRID (4 Categories) ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Direct Trading Network ({totalConnectionsCount} Authorized)
+            </h2>
+            <span className="text-[10px] font-mono text-slate-400">Strictly direct counterparties</span>
+          </div>
 
-                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
-                        {formatCurrency(inv.financials.total, inv.currency)}
-                      </td>
+          <button
+            onClick={() => setCurrentTab('network')}
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
+          >
+            <span>Open Tree View</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
-                            inv.status === 'paid'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : inv.status === 'overdue'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : inv.status === 'due_today'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : inv.status === 'pending_review'
-                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          {inv.status.replace('_', ' ')}
-                        </span>
-                      </td>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {categories.map(cat => {
+            const count = directConnections[cat.key]?.length || 0;
 
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setSelectedInvoice(inv);
-                          }}
-                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium"
-                        >
-                          Inspect
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            return (
+              <div
+                key={cat.key}
+                onClick={() => setCurrentTab('network')}
+                className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all group"
+              >
+                <div className="flex items-center justify-between text-slate-400 mb-2">
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">
+                    {cat.label}
+                  </span>
+                  <Network className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                </div>
+                <div className="text-2xl font-bold font-mono text-slate-900 tracking-tight">
+                  {count}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  {cat.desc}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── QUICK ACTION CARDS: VERIFICATION & NETWORK ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Verification Card */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-all">
+          <div className="space-y-2">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <FileCheck2 className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Cryptographic Record Verification
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Verify canonical SHA-256 fingerprints to guarantee commercial invoice records and trade agreements have not been modified or altered.
+            </p>
+          </div>
+
+          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[11px] font-mono text-slate-400">SHA-256 Proof Engine</span>
+            <button
+              onClick={() => setCurrentTab('verification')}
+              className="inline-flex items-center space-x-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800"
+            >
+              <span>Launch Verifier</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* Recent Activity Feed: 4 cols */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/80 shadow-xs p-4 space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h2 className="text-sm font-bold text-slate-900">Recent Activity</h2>
-            <button
-              onClick={() => setCurrentTab('activity')}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-            >
-              Full Log
-            </button>
+        {/* Network Topology Card */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-all">
+          <div className="space-y-2">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <GitBranch className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Direct Trading Network Topology
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Inspect your verified relationship tree organized across Distributors, Wholesalers, Suppliers, and Sellers with strict direct-connection privacy.
+            </p>
           </div>
 
-          <div className="space-y-3.5">
-            {activities.slice(0, 5).map(act => (
-              <div key={act.id} className="flex items-start space-x-2.5 text-xs">
-                <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
-                <div className="space-y-0.5">
-                  <p className="text-slate-800 font-medium leading-snug">{act.details}</p>
-                  <div className="flex items-center space-x-2 text-[10px] text-slate-400">
-                    <span>{new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    <span>&bull;</span>
-                    <span className="font-mono">{act.invoiceRef || act.invoiceNumber || 'System'}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[11px] font-mono text-slate-400">4-Category Governance</span>
+            <button
+              onClick={() => setCurrentTab('network')}
+              className="inline-flex items-center space-x-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700"
+            >
+              <span>Explore Network Tree</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>
