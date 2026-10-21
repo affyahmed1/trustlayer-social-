@@ -16,6 +16,11 @@ import {
   InventoryServiceState,
 } from './inventoryService';
 import { runRecursiveIntelligenceReconciliation } from './intelligenceService';
+import {
+  verifyInvoiceRecord,
+  createCanonicalInvoicePayload,
+  computeSha256FingerprintSync,
+} from '../utils/reference';
 
 function createFreshTestState(): InventoryServiceState {
   const inventory: InventoryItem[] = [
@@ -848,3 +853,82 @@ test('Scenario 15: Confirm that returns and reversals preserve historical record
   const restoredItem = reversalRes.state.inventory.find(i => i.productId === 'PROD-ISA-X4')!;
   assert.equal(restoredItem.currentStock, 1000, 'Reversal restored stock to 1,000 units');
 });
+
+// ─────────────────────────────────────────────────────────────
+// SCENARIO 16: Single Invoice Identity & Source-Based Issuer Verification
+// ─────────────────────────────────────────────────────────────
+test('Scenario 16: Single Invoice Identity & Source-Based Issuer Verification', () => {
+  const invoiceRecord: IssuedInvoiceRecord = {
+    id: 'TL-REC-2026-901',
+    originalInvoiceNumber: 'INV-2026-0042',
+    issueDate: '2026-10-02',
+    issuingBusinessId: 'TL-ORG-9801',
+    issuingBusinessName: 'Apex Supply Co.',
+    issuingBusinessUsername: '@apexsupply',
+    buyerBusinessId: 'TL-ORG-4420',
+    buyerBusinessName: 'Nexus Global Logistics',
+    buyerBusinessUsername: '@nexusglobal',
+    productId: 'PROD-ISA-X4',
+    productName: 'Industrial Sensor Array Model X4',
+    sku: 'ISA-X4-BLK',
+    quantitySold: 200,
+    unitOfMeasure: 'units',
+    unitPrice: 420.0,
+    totalAmount: 84000.0,
+    currency: 'USD',
+    paymentStatus: 'Paid',
+    invoiceDocRef: 'INV-2026-0042_doc.pdf',
+    decisionStatus: 'Approved',
+    verificationStatus: 'Consistent',
+    inventoryMovementApplied: true,
+    createdAt: '2026-10-02T08:30:00Z',
+    updatedAt: '2026-10-15T16:00:00Z',
+  };
+
+  // Compute canonical hash
+  const canonical = createCanonicalInvoicePayload({
+    invoiceNumber: invoiceRecord.originalInvoiceNumber,
+    issueDate: invoiceRecord.issueDate,
+    dueDate: '',
+    currency: invoiceRecord.currency,
+    total: invoiceRecord.totalAmount,
+    issuerId: invoiceRecord.issuingBusinessId,
+    issuerName: invoiceRecord.issuingBusinessName,
+    buyerName: invoiceRecord.buyerBusinessName,
+    itemsCount: 1,
+  });
+  invoiceRecord.fingerprint = computeSha256FingerprintSync(canonical);
+
+  // 1. Verify directly by single Invoice Number (no redundant reference needed)
+  const result = verifyInvoiceRecord('INV-2026-0042', {
+    issuedInvoices: [invoiceRecord],
+    receivedInvoices: [],
+    invoices: [],
+  });
+
+  assert.equal(result.status, 'FOUND');
+  assert.equal(result.invoiceNumber, 'INV-2026-0042');
+  assert.equal(result.issuerName, 'Apex Supply Co.');
+  assert.equal(result.buyerName, 'Nexus Global Logistics');
+  assert.equal(result.productName, 'Industrial Sensor Array Model X4');
+  assert.equal(result.quantity, 200);
+  assert.equal(result.totalAmount, 84000);
+  assert.equal(result.integrity, 'MATCH');
+  assert.equal(result.issuerVerification, 'VERIFIED');
+
+  // 2. Tampered inspection: altering amount triggers cryptographic MISMATCH
+  const tamperedResult = verifyInvoiceRecord(
+    'INV-2026-0042',
+    {
+      issuedInvoices: [invoiceRecord],
+      receivedInvoices: [],
+      invoices: [],
+    },
+    { ...invoiceRecord, totalAmount: 99999 }
+  );
+
+  assert.equal(tamperedResult.status, 'FOUND');
+  assert.equal(tamperedResult.integrity, 'MISMATCH');
+  assert.ok(tamperedResult.tamperedFields?.includes('Total Amount'));
+});
+

@@ -6,16 +6,19 @@ import {
   UpstreamHopFinding,
   DownstreamHopFinding,
   RiskIndicator,
+  MultiSourceAllocation,
 } from '../types/inventory';
-import { InventoryServiceState } from './inventoryService';
+import { InventoryServiceState, calculateMultiSourceAllocation } from './inventoryService';
 import { MULTI_TIER_SUPPLY_CHAIN, MultiTierChainRecord } from '../data/seedInventoryData';
 
 /**
- * TrustLayer Recursive Supply-Chain Reconciliation Engine
- * Analyzes transaction consistency, verifies counterpart documents, traces upstream provenance,
- * reconciles inventory ledger movements, and grades risk and evidence completeness.
+ * TrustLayer Central Intelligence Engine
+ * Coordinates:
+ * 1. Transaction Verification (structure, duplicate invoice reference, fingerprint, counterpart matching)
+ * 2. Stock Reconciliation (multi-source supply attribution, movement reconciliation, deficit detection)
+ * 3. Supply Chain Intelligence (multi-tier provenance traversal, downstream fairness protection, unrelated vs connected discrepancy analysis)
  *
- * Supports role-based access control (RBAC):
+ * Enforces role-based access control (RBAC):
  * When requestorRole is 'Seller' or 'Marketplace', upstream confidential brand and distributor
  * identities are cryptographically verified but redacted to preserve commercial privacy.
  */
@@ -33,9 +36,13 @@ export function runRecursiveIntelligenceReconciliation(
   let targetReceived: ReceivedInvoiceRecord | undefined;
 
   if (targetType === 'issued') {
-    targetIssued = state.issuedInvoices.find(i => i.id === targetInvoiceId);
+    targetIssued = state.issuedInvoices.find(
+      i => i.id === targetInvoiceId || i.originalInvoiceNumber === targetInvoiceId
+    );
   } else {
-    targetReceived = state.receivedInvoices.find(i => i.id === targetInvoiceId);
+    targetReceived = state.receivedInvoices.find(
+      i => i.id === targetInvoiceId || i.originalInvoiceNumber === targetInvoiceId
+    );
   }
 
   const invoice = targetIssued || targetReceived;
@@ -63,7 +70,7 @@ export function runRecursiveIntelligenceReconciliation(
         unsupportedQuantity: 0,
         isBalanced: false,
       },
-      missingEvidence: ['Invoice record could not be found in active ledger.'],
+      missingEvidence: ['Invoice record could not be found in active registry.'],
       detectedConflicts: ['Invalid transaction reference.'],
       riskIndicators: [
         {
@@ -90,21 +97,19 @@ export function runRecursiveIntelligenceReconciliation(
   const productId = invoice.productId;
   const sku = invoice.sku;
   const productName = invoice.productName;
+  const businessId = isIssued
+    ? (invoice as IssuedInvoiceRecord).issuingBusinessId
+    : (invoice as ReceivedInvoiceRecord).receivingBusinessId;
 
-  // ── 1. INVENTORY RECONCILIATION FOR CURRENT ENTITY ──
-  const inventoryItem = state.inventory.find(i => i.productId === productId);
-  const openingStock = inventoryItem?.openingStock || 0;
-  const approvedPurchases = inventoryItem?.totalApprovedPurchases || 0;
-  const approvedSales = inventoryItem?.totalApprovedSales || 0;
-  const currentStock = inventoryItem?.currentStock || 0;
-
-  // ── 2. MATCHED RECORDS & EVIDENCE COLLECTION ──
+  // ═════════════════════════════════════════════════════════════
+  // ENGINE 1: TRANSACTION VERIFICATION
+  // ═════════════════════════════════════════════════════════════
   const matchedRecords: MatchedRecordSummary[] = [];
   const missingEvidence: string[] = [];
   const detectedConflicts: string[] = [];
   const riskIndicators: RiskIndicator[] = [];
 
-  // Match the target record itself
+  // Match target invoice
   matchedRecords.push({
     recordId: invoice.id,
     type: isIssued ? 'ISSUED_MATCH' : 'RECEIVED_MATCH',
@@ -117,62 +122,36 @@ export function runRecursiveIntelligenceReconciliation(
     status: invoice.decisionStatus,
   });
 
-  // Check matching linked transaction if present
-  const linkedRef = isIssued
-    ? (invoice as IssuedInvoiceRecord).linkedReceivedInvoiceRef
-    : (invoice as ReceivedInvoiceRecord).linkedIssuedInvoiceRef;
-
-  if (linkedRef) {
-    const linkedRec = state.receivedInvoices.find(r => r.id === linkedRef || r.originalInvoiceNumber === linkedRef) ||
-      state.issuedInvoices.find(i => i.id === linkedRef || i.originalInvoiceNumber === linkedRef);
-    if (linkedRec) {
-      matchedRecords.push({
-        recordId: linkedRec.id,
-        type: 'UPSTREAM_INVOICE',
-        entityName: 'supplierBusinessName' in linkedRec ? (linkedRec as ReceivedInvoiceRecord).supplierBusinessName : (linkedRec as IssuedInvoiceRecord).issuingBusinessName,
-        invoiceNumber: linkedRec.originalInvoiceNumber,
-        quantity: 'quantityPurchased' in linkedRec ? (linkedRec as ReceivedInvoiceRecord).quantityPurchased : (linkedRec as IssuedInvoiceRecord).quantitySold,
-        date: linkedRec.issueDate,
-        status: linkedRec.decisionStatus,
-      });
-    } else {
-      missingEvidence.push(`Referenced counterpart transaction "${linkedRef}" could not be located in the TrustLayer registry.`);
-      detectedConflicts.push(`Missing counterpart transaction record: expected linked document "${linkedRef}" is not registered.`);
-      riskIndicators.push({
-        code: 'ERR_MISSING_COUNTERPART',
-        severity: 'high',
-        title: 'Counterpart Record Missing',
-        description: `This transaction claims an upstream or counterpart link (${linkedRef}), but no registered document corresponds to that identifier in the TrustLayer registry.`,
-      });
-    }
-  } else if (invoice.originalInvoiceNumber.includes('NO-COUNTERPART')) {
-    missingEvidence.push('No counterpart sales confirmation or matching purchase record registered by trade partner.');
-    detectedConflicts.push('Missing bilateral counterpart confirmation in registry.');
+  // Structural integrity validation
+  if (!invoice.originalInvoiceNumber || !invoice.issueDate || requestedQuantity <= 0) {
+    detectedConflicts.push('Invoice record fails structural validation (missing date, number, or non-positive quantity).');
     riskIndicators.push({
-      code: 'ERR_MISSING_COUNTERPART',
-      severity: 'high',
-      title: 'Missing Counterpart Transaction Record',
-      description: 'The buyer or supplier has not confirmed this transaction on TrustLayer, leaving the bilateral record uncorroborated.',
+      code: 'ERR_INVALID_STRUCTURE',
+      severity: 'critical',
+      title: 'Structural Validation Failure',
+      description: 'The invoice document lacks mandatory compliance fields or declares an invalid quantity.',
     });
   }
 
-  // ── 3. DUPLICATE INVOICE IDENTIFIER / DOCUMENT CHECK ──
+  // Duplicate invoice number collision check
   const duplicateIssued = state.issuedInvoices.filter(
     i =>
       i.id !== invoice.id &&
-      i.issuingBusinessId === (isIssued ? (invoice as IssuedInvoiceRecord).issuingBusinessId : (invoice as ReceivedInvoiceRecord).receivingBusinessId) &&
+      i.issuingBusinessId === businessId &&
       i.originalInvoiceNumber.trim().toLowerCase() === invoice.originalInvoiceNumber.trim().toLowerCase()
   );
 
   const duplicateReceived = state.receivedInvoices.filter(
     i =>
       i.id !== invoice.id &&
-      i.supplierBusinessId === (isIssued ? (invoice as IssuedInvoiceRecord).buyerBusinessId : (invoice as ReceivedInvoiceRecord).supplierBusinessId) &&
+      i.receivingBusinessId === businessId &&
       i.originalInvoiceNumber.trim().toLowerCase() === invoice.originalInvoiceNumber.trim().toLowerCase()
   );
 
   if (duplicateIssued.length > 0 || duplicateReceived.length > 0) {
-    detectedConflicts.push(`Duplicate invoice number detected: "${invoice.originalInvoiceNumber}" has been registered across multiple records.`);
+    detectedConflicts.push(
+      `Duplicate invoice identifier detected: "${invoice.originalInvoiceNumber}" has been registered across multiple records.`
+    );
     riskIndicators.push({
       code: 'WARN_DUPLICATE_IDENTIFIER',
       severity: 'medium',
@@ -181,7 +160,7 @@ export function runRecursiveIntelligenceReconciliation(
     });
   }
 
-  // Check for duplicate document fingerprint across all recorded invoices
+  // Duplicate document fingerprint check (SHA-256 reuse)
   if (invoice.fingerprint) {
     const allInvoices = [...state.issuedInvoices, ...state.receivedInvoices];
     const duplicateFingerprint = allInvoices.filter(
@@ -201,14 +180,77 @@ export function runRecursiveIntelligenceReconciliation(
     }
   }
 
-  // ── 4. QUANTITY FEASIBILITY CHECK ──
+  // Counterpart bilateral link verification
+  const linkedRef = isIssued
+    ? (invoice as IssuedInvoiceRecord).linkedReceivedInvoiceRef
+    : (invoice as ReceivedInvoiceRecord).linkedIssuedInvoiceRef;
+
+  if (linkedRef) {
+    const linkedRec =
+      state.receivedInvoices.find(r => r.id === linkedRef || r.originalInvoiceNumber === linkedRef) ||
+      state.issuedInvoices.find(i => i.id === linkedRef || i.originalInvoiceNumber === linkedRef);
+
+    if (linkedRec) {
+      matchedRecords.push({
+        recordId: linkedRec.id,
+        type: 'UPSTREAM_INVOICE',
+        entityName:
+          'supplierBusinessName' in linkedRec
+            ? (linkedRec as ReceivedInvoiceRecord).supplierBusinessName
+            : (linkedRec as IssuedInvoiceRecord).issuingBusinessName,
+        invoiceNumber: linkedRec.originalInvoiceNumber,
+        quantity:
+          'quantityPurchased' in linkedRec
+            ? (linkedRec as ReceivedInvoiceRecord).quantityPurchased
+            : (linkedRec as IssuedInvoiceRecord).quantitySold,
+        date: linkedRec.issueDate,
+        status: linkedRec.decisionStatus,
+      });
+    } else {
+      missingEvidence.push(`Referenced counterpart transaction "${linkedRef}" could not be located in registry.`);
+      detectedConflicts.push(`Missing counterpart transaction record: expected linked document "${linkedRef}" is not registered.`);
+      riskIndicators.push({
+        code: 'ERR_MISSING_COUNTERPART',
+        severity: 'high',
+        title: 'Counterpart Record Missing',
+        description: `This transaction claims a bilateral counterpart link (${linkedRef}), but no registered document corresponds to that identifier.`,
+      });
+    }
+  } else if (invoice.originalInvoiceNumber.includes('NO-COUNTERPART')) {
+    missingEvidence.push('No counterpart sales confirmation registered by trade partner.');
+    riskIndicators.push({
+      code: 'ERR_MISSING_COUNTERPART',
+      severity: 'high',
+      title: 'Missing Counterpart Transaction Record',
+      description: 'The buyer or supplier has not confirmed this transaction on TrustLayer, leaving the bilateral record uncorroborated.',
+    });
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  // ENGINE 2: STOCK RECONCILIATION & MULTI-SOURCE ATTRIBUTION
+  // ═════════════════════════════════════════════════════════════
+  const inventoryItem = state.inventory.find(
+    i => i.productId === productId && i.businessId === businessId
+  );
+  const openingStock = inventoryItem?.openingStock || 0;
+  const approvedPurchases = inventoryItem?.totalApprovedPurchases || 0;
+  const approvedSales = inventoryItem?.totalApprovedSales || 0;
+  const currentStock = inventoryItem?.currentStock || 0;
+
+  // Multi-source allocation analysis
+  const multiSourceAllocation = calculateMultiSourceAllocation(
+    productId,
+    businessId,
+    requestedQuantity,
+    state
+  );
+
   let quantityDeficit = false;
-  if (isIssued) {
-    // If selling, check if current stock can support this sale
-    if (requestedQuantity > currentStock && invoice.decisionStatus !== 'Approved') {
+  if (isIssued && invoice.decisionStatus !== 'Approved') {
+    if (requestedQuantity > currentStock) {
       quantityDeficit = true;
       detectedConflicts.push(
-        `Quantity Sold (${requestedQuantity} units) exceeds available warehouse stock (${currentStock} units on hand).`
+        `Quantity Sold (${requestedQuantity} units) exceeds available warehouse stock (${currentStock} units on hand). Shortfall: ${requestedQuantity - currentStock} units.`
       );
       riskIndicators.push({
         code: 'ERR_INSUFFICIENT_STOCK_VOLUME',
@@ -219,33 +261,26 @@ export function runRecursiveIntelligenceReconciliation(
     }
   }
 
-  // ── 5. RECURSIVE MULTI-TIER SUPPLY CHAIN PROVENANCE TRAVERSAL ──
-  // Traverses backwards: Seller -> Supplier -> Wholesaler -> Distributor -> Brand
+  // ═════════════════════════════════════════════════════════════
+  // ENGINE 3: SUPPLY CHAIN INTELLIGENCE & DOWNSTREAM FAIRNESS
+  // ═════════════════════════════════════════════════════════════
   const upstreamChain: UpstreamHopFinding[] = [];
   const downstreamChain: DownstreamHopFinding[] = [];
   const visitedTransactions = new Set<string>();
-  const visitedBusinesses = new Set<string>();
 
-  // Determine whether role-based confidentiality masking applies
   const isRestrictedRole = role === 'Seller' || role === 'Marketplace';
   let isScopedView = false;
 
-  // Helper recursive traversal
   function traverseUpstream(currentChainId: string, depth: number) {
-    if (depth > 5) return; // Prevent excessive depth
-    if (visitedTransactions.has(currentChainId)) return; // Prevent loops
+    if (depth > 6) return;
+    if (visitedTransactions.has(currentChainId)) return;
     visitedTransactions.add(currentChainId);
 
     const chainRecord = MULTI_TIER_SUPPLY_CHAIN.find(c => c.id === currentChainId);
     if (!chainRecord) return;
 
-    visitedBusinesses.add(chainRecord.businessUsername);
-
-    // Check if confidentiality redaction applies to upstream Tier 0 or Tier 1
     const shouldRedact = isRestrictedRole && chainRecord.tierLevel <= 1;
-    if (shouldRedact) {
-      isScopedView = true;
-    }
+    if (shouldRedact) isScopedView = true;
 
     const businessName = shouldRedact
       ? `${chainRecord.role} Partner [Identity Masked for Commercial Privacy]`
@@ -265,7 +300,7 @@ export function runRecursiveIntelligenceReconciliation(
       recordId: chainRecord.id,
       quantitySupplied: chainRecord.quantity,
       date: chainRecord.issueDate,
-      status: 'VERIFIED',
+      status: chainRecord.verificationStatus === 'Inconsistency Detected' ? 'MISSING_LINK' : 'VERIFIED',
       notes,
       isRedacted: shouldRedact,
       redactionReason: shouldRedact
@@ -273,18 +308,15 @@ export function runRecursiveIntelligenceReconciliation(
         : undefined,
     });
 
-    // Check upstream link recursively
     if (chainRecord.upstreamRecordId) {
       traverseUpstream(chainRecord.upstreamRecordId, depth + 1);
     }
   }
 
-  // If this invoice relates to PROD-ISA-X4, we trace the full OmniCore chain
+  // Supply-chain provenance mapping for seed items
   if (productId === 'PROD-ISA-X4') {
-    // Start traversal from Tier 2
     traverseUpstream('CHAIN-TIER-2', 1);
 
-    // If target is issued to Nexus Global, downstream exists
     if (isIssued && (invoice as IssuedInvoiceRecord).buyerBusinessUsername === '@nexusglobal') {
       downstreamChain.push({
         tierLevel: 4,
@@ -299,7 +331,6 @@ export function runRecursiveIntelligenceReconciliation(
       });
     }
   } else if (productId === 'PROD-FCG-M2' && invoice.originalInvoiceNumber.includes('UNVETTED')) {
-    // Missing upstream link test (unvetted intake from Kobe Heavy)
     upstreamChain.push({
       tierLevel: 2,
       businessName: 'Kobe Heavy Industrial Materials',
@@ -320,7 +351,6 @@ export function runRecursiveIntelligenceReconciliation(
       description: 'Supplier does not have documented provenance linking back to an authorized component manufacturer.',
     });
   } else if (productId === 'PROD-PAM-09' && (invoice.decisionStatus === 'Rejected' || invoice.originalInvoiceNumber.includes('DISPUTE'))) {
-    // Edge case: Rejected dock delivery
     detectedConflicts.push('Invoice was formally rejected due to optical barcode checksum mismatch.');
     riskIndicators.push({
       code: 'ERR_REJECTED_TRANSACTION',
@@ -330,55 +360,97 @@ export function runRecursiveIntelligenceReconciliation(
     });
   }
 
-  // ── 6. EVIDENCE COMPLETENESS CALCULATION ──
-  let evidenceCompleteness = 50; // Base score for having an invoice record
+  // ── DOWNSTREAM FAIRNESS & UNRELATED VS CONNECTED ISSUES ──
+  // Check if any upstream source has a discrepancy
+  const hasUpstreamDiscrepancy =
+    upstreamChain.some(h => h.status === 'MISSING_LINK') ||
+    multiSourceAllocation.sources.some(s => s.isDisputed);
 
+  let directlyConnectedIssuesDetected = false;
+  let unrelatedIssuesDetected = false;
+  let isDownstreamProtected = false;
+
+  if (hasUpstreamDiscrepancy) {
+    if (multiSourceAllocation.totalSupported >= requestedQuantity) {
+      // Unrelated upstream issue: alternative independent sources fully cover the requirement!
+      unrelatedIssuesDetected = true;
+      isDownstreamProtected = true;
+    } else {
+      // Directly connected issue: transaction depends partially or wholly on disputed stock
+      directlyConnectedIssuesDetected = true;
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  // EVIDENCE COMPLETENESS & DECISION SYNTHESIS
+  // ═════════════════════════════════════════════════════════════
+  let evidenceCompleteness = 50;
   if (matchedRecords.length > 1) evidenceCompleteness += 15;
-  if (upstreamChain.length >= 2) evidenceCompleteness += 25;
-  if (upstreamChain.some(h => h.role === 'Brand' && h.status === 'VERIFIED')) evidenceCompleteness += 10;
+  if (upstreamChain.length >= 2) evidenceCompleteness += 20;
+  if (upstreamChain.some(h => h.role === 'Brand' && h.status === 'VERIFIED')) evidenceCompleteness += 15;
   if (missingEvidence.length > 0) evidenceCompleteness -= 20;
   if (detectedConflicts.length > 0) evidenceCompleteness -= 25;
-
   evidenceCompleteness = Math.max(10, Math.min(100, evidenceCompleteness));
 
-  // ── 7. SYNTHESIZE OVERALL RESULT ──
   let overallResult: IntelligenceReport['overallResult'] = 'Consistent';
+  let finalDecision: 'Approved' | 'Under Review' | 'Rejected' = 'Approved';
   let explanation = '';
   let recommendedNextAction = '';
 
   if (invoice.decisionStatus === 'Rejected') {
     overallResult = 'Rejected Transaction';
-    explanation = `This transaction was formally rejected on ${invoice.updatedAt ? new Date(invoice.updatedAt).toLocaleDateString() : 'record'}. ${invoice.rejectionReason || 'Commercial delivery was disputed.'}`;
+    finalDecision = 'Rejected';
+    explanation = `This transaction was formally rejected on record. ${invoice.rejectionReason || 'Commercial delivery was disputed.'}`;
     recommendedNextAction = 'Do not accept or settle payment until counterparty issues an amended credit note or replacement invoice.';
   } else if (quantityDeficit) {
     overallResult = 'Inconsistency Detected';
+    finalDecision = 'Under Review';
     explanation = `The requested transaction volume (${requestedQuantity} units) cannot be supported by current verified inventory (${currentStock} units). Outgoing shipments exceed verifiable on-hand stock.`;
     recommendedNextAction = 'Halt approval. Reconcile warehouse stock count and audit unapproved purchase shipments before proceeding.';
+  } else if (directlyConnectedIssuesDetected) {
+    overallResult = 'Inconsistency Detected';
+    finalDecision = 'Under Review';
+    explanation = `Directly connected upstream discrepancy detected. Only ${multiSourceAllocation.totalSupported} units are supported by verified sources, while ${multiSourceAllocation.totalDisputed} units rely on disputed upstream stock.`;
+    recommendedNextAction = 'Halt approval of the disputed portion. Require supplier to provide replacement stock from an undisputed alternate source.';
   } else if (riskIndicators.some(r => r.code === 'WARN_DUPLICATE_DOCUMENT_FINGERPRINT')) {
     overallResult = 'Potential Risk';
+    finalDecision = 'Under Review';
     explanation = `Cryptographic fingerprint collision detected. An identical document payload has been submitted under multiple invoice identifiers.`;
     recommendedNextAction = 'Investigate potential duplicate billing or document spoofing with compliance operations.';
   } else if (missingEvidence.length > 0 || upstreamChain.some(h => h.status === 'UNREGISTERED')) {
     overallResult = 'Insufficient Evidence';
+    finalDecision = 'Under Review';
     explanation = `The transaction record exists, but upstream supply provenance cannot be verified back to an authorized brand origin. Evidence is insufficient to verify supply-chain integrity.`;
     recommendedNextAction = 'Request upstream commercial invoices and customs consignment records from supplier.';
   } else if (duplicateIssued.length > 0 || duplicateReceived.length > 0) {
     overallResult = 'Potential Risk';
+    finalDecision = 'Under Review';
     explanation = `Invoice identifier collisions detected. The invoice number has been reused across multiple transaction records in the registry.`;
     recommendedNextAction = 'Contact counterparty billing operations to confirm whether this is an amended document or a duplicate submission.';
   } else if (invoice.decisionStatus === 'Pending') {
     overallResult = 'Verification Pending';
+    finalDecision = 'Under Review';
     explanation = `Invoice record is consistent with registered supply-chain participants. Awaiting formal business approval to finalize inventory movement.`;
     recommendedNextAction = 'Review invoice pricing, payment terms, and delivery confirmation, then click Approve Transaction.';
   } else {
     overallResult = 'Consistent';
-    const brandName = isScopedView ? 'Authorized Brand Origin' : (upstreamChain.find(u => u.role === 'Brand')?.businessName || 'OmniCore Precision Labs');
-    explanation = `Full recursive supply-chain provenance verified. Transaction is mathematically and chronologically consistent across all tiers from ${brandName} down to trade counterparty.`;
+    finalDecision = 'Approved';
+    const brandName = isScopedView
+      ? 'Authorized Brand Origin'
+      : upstreamChain.find(u => u.role === 'Brand')?.businessName || 'OmniCore Precision Labs';
+
+    if (unrelatedIssuesDetected && isDownstreamProtected) {
+      explanation = `Downstream Fairness Protection Active: Transaction is approved. Although an upstream discrepancy exists in an unrelated transaction, this transaction is independently supported by verified alternative stock.`;
+    } else if (multiSourceAllocation.hasMultiSource) {
+      explanation = `Multi-Source Reconciliation Verified: Transaction approved. The requested quantity (${requestedQuantity} units) is mathematically supported across multiple legitimate supply sources.`;
+    } else {
+      explanation = `Full recursive supply-chain provenance verified. Transaction is mathematically and chronologically consistent across all tiers from ${brandName} down to trade counterparty.`;
+    }
     recommendedNextAction = 'Proceed with standard commercial payment settlement and ledger archiving.';
   }
 
-  const supportedQuantity = quantityDeficit ? currentStock : requestedQuantity;
-  const unsupportedQuantity = quantityDeficit ? requestedQuantity - currentStock : 0;
+  const supportedQuantity = quantityDeficit ? currentStock : multiSourceAllocation.totalSupported;
+  const unsupportedQuantity = quantityDeficit ? requestedQuantity - currentStock : multiSourceAllocation.shortfall;
 
   return {
     runId,
@@ -400,7 +472,30 @@ export function runRecursiveIntelligenceReconciliation(
       currentStock,
       supportedQuantity,
       unsupportedQuantity,
-      isBalanced: !quantityDeficit,
+      isBalanced: !quantityDeficit && !directlyConnectedIssuesDetected,
+    },
+    multiSourceBreakdown: {
+      sources: multiSourceAllocation.sources,
+      totalSupported: multiSourceAllocation.totalSupported,
+      totalDisputed: multiSourceAllocation.totalDisputed,
+      shortfall: multiSourceAllocation.shortfall,
+      hasMultiSource: multiSourceAllocation.hasMultiSource,
+    },
+    downstreamFairness: {
+      isDownstreamProtected,
+      unrelatedIssuesDetected,
+      directlyConnectedIssuesDetected,
+      summaryNotes: isDownstreamProtected
+        ? 'Unrelated upstream issue detected on separate batch, but downstream transaction is protected by independent alternative stock.'
+        : directlyConnectedIssuesDetected
+        ? 'Directly connected issue: downstream transaction depends on disputed upstream stock and requires review.'
+        : 'All upstream and downstream checks are consistent.',
+    },
+    decisionContext: {
+      finalDecision,
+      decisionReason: explanation,
+      stockPositionSummary: `${currentStock} units on hand (${supportedQuantity} units verified)`,
+      upstreamStatus: upstreamChain.length > 0 ? `${upstreamChain.length} verified hop(s)` : 'Direct consignment',
     },
     missingEvidence,
     detectedConflicts,

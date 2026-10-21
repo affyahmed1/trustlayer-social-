@@ -78,7 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
               setShowResults(true);
             }}
             onFocus={() => setShowResults(true)}
-            placeholder="Search invoice ref, number, or business..."
+            placeholder="Search invoice number or business..."
             className="w-full pl-9 pr-12 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50/60 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
           />
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded bg-white">
@@ -102,7 +102,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
                 >
                   <div>
                     <div className="font-mono font-bold text-slate-900 flex items-center space-x-1.5">
-                      <span>{inv.reference || inv.invoiceNumber}</span>
+                      <span>Invoice {inv.invoiceNumber || inv.reference}</span>
                       {inv.reference && (
                         <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded">
                           Verified

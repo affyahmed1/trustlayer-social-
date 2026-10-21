@@ -159,7 +159,7 @@ export const InvoiceSheetDetailModal: React.FC<InvoiceSheetDetailModalProps> = (
                 {isIssued ? 'Sheet B · Outgoing Sales Invoice' : 'Sheet C · Incoming Purchase Invoice'}
               </span>
               <span className="text-slate-300">·</span>
-              <span className="text-xs font-mono font-semibold text-slate-600">{invoice.id}</span>
+              <span className="text-[11px] font-mono font-medium text-slate-500">Record ID: {invoice.id}</span>
             </div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center space-x-2">
               <span>Invoice {invoice.originalInvoiceNumber}</span>

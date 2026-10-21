@@ -1,359 +1,379 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { getAuthorizedDirectConnections, BusinessCategory } from '../services/networkService';
 import {
   ShieldCheck,
   Network,
   ArrowRight,
-  Mail,
-  MapPin,
-  ChevronRight,
-  UserCheck,
-  FileCheck2,
-  GitBranch,
   Package,
   ArrowUpRight,
   ArrowDownLeft,
+  CheckCircle2,
+  AlertTriangle,
+  HelpCircle,
+  Building,
+  Layers,
+  FileCheck2,
+  Check,
+  TrendingUp,
+  Cpu,
+  History,
+  Info,
 } from 'lucide-react';
 
 export const HomeDashboard: React.FC = () => {
   const {
     setCurrentTab,
     activeProfile,
+    setActiveProfile,
+    businessRoles,
     inventoryItems,
     issuedInvoices,
     receivedInvoices,
+    reassessmentEvents,
   } = useApp();
 
-  // Network connection metrics for the authenticated business
-  const directConnections = useMemo(() => {
-    return getAuthorizedDirectConnections(activeProfile.username);
-  }, [activeProfile.username]);
-
-  const categories: { key: BusinessCategory; label: string; desc: string }[] = [
-    { key: 'DISTRIBUTOR', label: 'Distributors', desc: 'Direct regional distributors' },
-    { key: 'WHOLESALER', label: 'Wholesalers', desc: 'Authorized wholesale trade partners' },
-    { key: 'SUPPLIER', label: 'Suppliers', desc: 'Material & component suppliers' },
-    { key: 'SELLER', label: 'Sellers', desc: 'Commercial retail & outlet sellers' },
-  ];
-
-  const totalConnectionsCount = useMemo(() => {
-    return (
-      directConnections.DISTRIBUTOR.length +
-      directConnections.WHOLESALER.length +
-      directConnections.SUPPLIER.length +
-      directConnections.SELLER.length
+  // Metrics scoped to activeProfile
+  const myIssued = useMemo(() => {
+    return issuedInvoices.filter(
+      i => i.issuingBusinessUsername === activeProfile.username || i.issuingBusinessId === activeProfile.id
     );
-  }, [directConnections]);
+  }, [issuedInvoices, activeProfile]);
+
+  const myReceived = useMemo(() => {
+    return receivedInvoices.filter(
+      r => r.receivingBusinessUsername === activeProfile.username || r.receivingBusinessId === activeProfile.id
+    );
+  }, [receivedInvoices, activeProfile]);
+
+  const myInventory = useMemo(() => {
+    return inventoryItems.filter(
+      i => i.businessUsername === activeProfile.username || i.businessId === activeProfile.id
+    );
+  }, [inventoryItems, activeProfile]);
+
+  const approvedCount = useMemo(() => {
+    const issApproved = myIssued.filter(i => i.decisionStatus === 'Approved').length;
+    const recApproved = myReceived.filter(r => r.decisionStatus === 'Approved').length;
+    return issApproved + recApproved;
+  }, [myIssued, myReceived]);
+
+  const underReviewCount = useMemo(() => {
+    const issRev = myIssued.filter(i => i.decisionStatus === 'Pending').length;
+    const recRev = myReceived.filter(r => r.decisionStatus === 'Pending').length;
+    return issRev + recRev;
+  }, [myIssued, myReceived]);
+
+  const totalCurrentStock = useMemo(() => {
+    return myInventory.reduce((sum, item) => sum + item.currentStock, 0);
+  }, [myInventory]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* ── TOP HERO BANNER ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+      {/* ── TOP HERO HEADER & SYSTEM IDENTITY ── */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
-            Business Dashboard
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Verified cryptographic business identity and direct network partner management.
+          <div className="flex items-center space-x-2">
+            <span className="text-xl font-black text-indigo-600 tracking-tight flex items-center space-x-2">
+              <ShieldCheck className="w-6 h-6 text-indigo-600 inline" />
+              <span>TrustLayer</span>
+            </span>
+            <span className="text-slate-300 text-lg">|</span>
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              System Architecture & Transaction Flow
+            </h1>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Intelligent Supply Chain Verification &bull; Multi-Source Reconciliation &bull; Fair & Transparent Decisions
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5">
-          <button
-            onClick={() => setCurrentTab('verification')}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 active:scale-98 transition-all"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Verify Record</span>
-          </button>
-
-          <button
-            onClick={() => setCurrentTab('network')}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 active:scale-98 transition-all shadow-xs"
-          >
-            <Network className="w-4 h-4" />
-            <span>View Network</span>
-          </button>
+        <div className="text-right shrink-0">
+          <span className="text-xs font-semibold text-slate-500 block">
+            Right Data + Smart Intelligence =
+          </span>
+          <span className="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wide">
+            Trusted Business Network
+          </span>
         </div>
       </div>
 
-      {/* ── AUTHENTICATED BUSINESS IDENTITY CARD ── */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
-              {activeProfile.name.charAt(0)}
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                  {activeProfile.name}
-                </h2>
-                {activeProfile.verified && (
-                  <span className="inline-flex items-center text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                    Verified Entity Registry
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2 mt-0.5 text-xs text-slate-500 font-mono">
-                <span>{activeProfile.username}</span>
-                <span className="text-slate-300">&bull;</span>
-                <span className="text-slate-600 font-semibold">{activeProfile.id}</span>
-                <span className="text-slate-300">&bull;</span>
-                <span className="text-slate-500 font-sans">{activeProfile.country}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setCurrentTab('settings')}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-50/70 border border-transparent hover:border-indigo-100 transition-all flex items-center space-x-1"
-            >
-              <span>Organization Profile</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      {/* ── USERS / BUSINESS ROLES RIBBON ── */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-bold text-slate-700 flex items-center space-x-2">
+            <Building className="w-4 h-4 text-indigo-600" />
+            <span>Users / Business Roles (Access based on permissions)</span>
+          </span>
+          <span className="text-[11px] text-slate-400">Click to switch authenticated perspective</span>
         </div>
 
-        {/* Contact & Registration Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 text-xs text-slate-600">
-          {activeProfile.contactPerson && (
-            <div className="flex items-center space-x-2">
-              <UserCheck className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Primary Contact</span>
-                <span className="font-semibold text-slate-800">{activeProfile.contactPerson}</span>
-              </div>
-            </div>
-          )}
-
-          {activeProfile.email && (
-            <div className="flex items-center space-x-2">
-              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Official Email</span>
-                <span className="font-mono text-slate-800">{activeProfile.email}</span>
-              </div>
-            </div>
-          )}
-
-          {activeProfile.address && (
-            <div className="flex items-center space-x-2">
-              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Registered Address</span>
-                <span className="text-slate-800 truncate block max-w-xs">{activeProfile.address}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── THREE-SHEET ARCHITECTURE SUMMARY ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Three-Sheet Ledger System
-            </h2>
-            <span className="text-[10px] font-mono text-slate-400">Append-only supply-chain inventory & invoices</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Sheet A: Inventory */}
-          <div
-            onClick={() => setCurrentTab('inventory')}
-            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between text-slate-400 mb-2">
-                <span className="text-[10px] font-mono uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                  Sheet A &bull; Inventory
-                </span>
-                <Package className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-              </div>
-              <div className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                Product Inventory
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                One immutable record per product with append-only stock movement provenance.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
-              <span className="text-[11px] font-mono text-slate-400">
-                {inventoryItems.filter(i => i.businessUsername === activeProfile.username || i.businessId === activeProfile.id).length} Tracked Products
-              </span>
-              <span className="flex items-center space-x-1">
-                <span>View Sheet</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </span>
-            </div>
-          </div>
-
-          {/* Sheet B: Issued Invoices */}
-          <div
-            onClick={() => setCurrentTab('issued_invoices')}
-            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-blue-400 hover:shadow-sm cursor-pointer transition-all group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between text-slate-400 mb-2">
-                <span className="text-[10px] font-mono uppercase font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                  Sheet B &bull; Issued
-                </span>
-                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
-              </div>
-              <div className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                Issued Invoices
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Permanent records of outgoing sales. Approvals validate stock and decrease inventory exactly once.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-blue-600">
-              <span className="text-[11px] font-mono text-slate-400">
-                {issuedInvoices.filter(i => i.issuingBusinessUsername === activeProfile.username || i.issuingBusinessId === activeProfile.id).length} Outgoing Invoices
-              </span>
-              <span className="flex items-center space-x-1">
-                <span>View Sheet</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </span>
-            </div>
-          </div>
-
-          {/* Sheet C: Received Invoices */}
-          <div
-            onClick={() => setCurrentTab('received_invoices')}
-            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-sm cursor-pointer transition-all group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between text-slate-400 mb-2">
-                <span className="text-[10px] font-mono uppercase font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                  Sheet C &bull; Received
-                </span>
-                <ArrowDownLeft className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition-colors" />
-              </div>
-              <div className="text-lg font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
-                Received Invoices
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Permanent records of supplier purchases. Approvals increase receiving stock with idempotency.
-              </p>
-            </div>
-            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-emerald-600">
-              <span className="text-[11px] font-mono text-slate-400">
-                {receivedInvoices.filter(i => i.receivingBusinessUsername === activeProfile.username || i.receivingBusinessId === activeProfile.id).length} Incoming Invoices
-              </span>
-              <span className="flex items-center space-x-1">
-                <span>View Sheet</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── NETWORK DIRECT CONNECTIONS SUMMARY GRID (4 Categories) ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Direct Trading Network ({totalConnectionsCount} Authorized)
-            </h2>
-            <span className="text-[10px] font-mono text-slate-400">Strictly direct counterparties</span>
-          </div>
-
-          <button
-            onClick={() => setCurrentTab('network')}
-            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
-          >
-            <span>Open Tree View</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {categories.map(cat => {
-            const count = directConnections[cat.key]?.length || 0;
-
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-1">
+          {businessRoles.map(roleEntity => {
+            const isActive = roleEntity.username === activeProfile.username;
             return (
-              <div
-                key={cat.key}
-                onClick={() => setCurrentTab('network')}
-                className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all group"
+              <button
+                key={roleEntity.id}
+                onClick={() => setActiveProfile(roleEntity)}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  isActive
+                    ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'bg-slate-50/60 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                }`}
               >
-                <div className="flex items-center justify-between text-slate-400 mb-2">
-                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">
-                    {cat.label}
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className={`text-[10px] font-mono font-bold uppercase px-1.5 py-0.2 rounded ${
+                      isActive ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {roleEntity.roleCategory}
                   </span>
-                  <Network className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                  {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
                 </div>
-                <div className="text-2xl font-bold font-mono text-slate-900 tracking-tight">
-                  {count}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1">
-                  {cat.desc}
-                </div>
-              </div>
+                <div className="font-bold text-xs text-slate-900 truncate">{roleEntity.name}</div>
+                <div className="text-[10px] font-mono text-slate-400 truncate">{roleEntity.username}</div>
+              </button>
             );
           })}
         </div>
       </div>
 
-      {/* ── QUICK ACTION CARDS: VERIFICATION & NETWORK ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Verification Card */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-all">
-          <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <FileCheck2 className="w-5 h-5" />
+      {/* ── OPERATIONAL KPI METRICS ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Invoices Recorded */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-1">
+          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+            Invoices Recorded
+          </span>
+          <div className="text-2xl font-extrabold text-slate-900 font-mono">
+            {myIssued.length + myReceived.length}
+          </div>
+          <div className="text-[11px] text-slate-500 flex items-center justify-between">
+            <span>Sales: {myIssued.length}</span>
+            <span>Purchases: {myReceived.length}</span>
+          </div>
+        </div>
+
+        {/* Transactions Approved */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-1">
+          <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">
+            Transactions Approved
+          </span>
+          <div className="text-2xl font-extrabold text-emerald-700 font-mono">
+            {approvedCount}
+          </div>
+          <div className="text-[11px] text-emerald-600">
+            Backed by verified stock movements
+          </div>
+        </div>
+
+        {/* Under Review / Pending */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-1">
+          <span className="text-[10px] uppercase font-bold text-amber-600 tracking-wider">
+            Under Review / Pending
+          </span>
+          <div className="text-2xl font-extrabold text-amber-700 font-mono">
+            {underReviewCount}
+          </div>
+          <div className="text-[11px] text-amber-600">
+            Awaiting verification or stock confirmation
+          </div>
+        </div>
+
+        {/* Available Stock Units */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-1">
+          <span className="text-[10px] uppercase font-bold text-indigo-600 tracking-wider">
+            On-Hand Verified Stock
+          </span>
+          <div className="text-2xl font-extrabold text-indigo-700 font-mono">
+            {totalCurrentStock.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-slate-500">
+            {myInventory.length} product line(s) managed
+          </div>
+        </div>
+      </div>
+
+      {/* ── TRUSTLAYER INTELLIGENCE ENGINE & ARCHITECTURE CARD ── */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Cpu className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Cryptographic Record Verification
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Verify canonical SHA-256 fingerprints to guarantee commercial invoice records and trade agreements have not been modified or altered.
-            </p>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                TrustLayer Intelligence Engine
+              </h2>
+              <p className="text-xs text-slate-500">
+                Analyzes, Reconciles, Verifies and Determines transaction integrity across all supply tiers.
+              </p>
+            </div>
           </div>
 
-          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[11px] font-mono text-slate-400">SHA-256 Proof Engine</span>
+          <div className="flex items-center space-x-2">
             <button
-              onClick={() => setCurrentTab('verification')}
-              className="inline-flex items-center space-x-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800"
+              onClick={() => setCurrentTab('inventory')}
+              className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
             >
-              <span>Launch Verifier</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              Open Inventory
+            </button>
+            <button
+              onClick={() => setCurrentTab('activity_log')}
+              className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors"
+            >
+              View Audit Trail
             </button>
           </div>
         </div>
 
-        {/* Network Topology Card */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-all">
-          <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <GitBranch className="w-5 h-5" />
+        {/* 3 Central Intelligence Engines Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Engine 1: Transaction Verification */}
+          <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/30 space-y-2.5">
+            <div className="flex items-center space-x-2 text-indigo-700 font-bold text-xs">
+              <FileCheck2 className="w-4 h-4" />
+              <span>1. Transaction Verification</span>
             </div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Direct Trading Network Topology
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Inspect your verified relationship tree organized across Distributors, Wholesalers, Suppliers, and Sellers with strict direct-connection privacy.
-            </p>
+            <ul className="text-xs text-slate-600 space-y-1.5 list-disc pl-4">
+              <li>Validate invoice structure & required fields</li>
+              <li>Detect duplicates & reused invoice numbers</li>
+              <li>Check quantity & product bilateral match</li>
+              <li>Verify cryptographic SHA-256 fingerprints</li>
+              <li>Apply business rules & compliance policies</li>
+            </ul>
           </div>
 
-          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[11px] font-mono text-slate-400">4-Category Governance</span>
-            <button
-              onClick={() => setCurrentTab('network')}
-              className="inline-flex items-center space-x-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700"
-            >
-              <span>Explore Network Tree</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+          {/* Engine 2: Stock Reconciliation */}
+          <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-2.5">
+            <div className="flex items-center space-x-2 text-emerald-700 font-bold text-xs">
+              <Package className="w-4 h-4" />
+              <span>2. Stock Reconciliation</span>
+            </div>
+            <ul className="text-xs text-slate-600 space-y-1.5 list-disc pl-4">
+              <li>Calculate stock across multiple supply sources</li>
+              <li>Track append-only inventory movements</li>
+              <li>Match with issued & received invoice lines</li>
+              <li>Identify volume deficits & inventory shortfalls</li>
+              <li>Support multi-source purchases (e.g. 300 + 200 = 500)</li>
+            </ul>
+          </div>
+
+          {/* Engine 3: Supply Chain Intelligence */}
+          <div className="p-4 rounded-xl border border-purple-100 bg-purple-50/30 space-y-2.5">
+            <div className="flex items-center space-x-2 text-purple-700 font-bold text-xs">
+              <Network className="w-4 h-4" />
+              <span>3. Supply Chain Intelligence</span>
+            </div>
+            <ul className="text-xs text-slate-600 space-y-1.5 list-disc pl-4">
+              <li>Trace upstream provenance & downstream hops</li>
+              <li>Identify multi-source suppliers dynamically</li>
+              <li>Detect unrelated vs. connected discrepancies</li>
+              <li>Protect valid downstream transactions (Fairness)</li>
+              <li>Apply role-based confidentiality masking (RBAC)</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Data Layer Banner */}
+        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
+          <div className="flex items-center space-x-2 font-semibold text-slate-800">
+            <Layers className="w-4 h-4 text-indigo-600" />
+            <span>Data Layer:</span>
+          </div>
+          <span className="font-mono text-[11px] text-slate-500">Unified Data Model</span>
+          <span className="text-slate-300">&bull;</span>
+          <span className="font-mono text-[11px] text-slate-500">Transaction Links</span>
+          <span className="text-slate-300">&bull;</span>
+          <span className="font-mono text-[11px] text-slate-500">Immutable Stock Movements</span>
+          <span className="text-slate-300">&bull;</span>
+          <span className="font-mono text-[11px] text-slate-500">Evidence Trails</span>
+          <span className="text-slate-300">&bull;</span>
+          <span className="font-mono text-[11px] text-slate-500">Audit Logs</span>
+        </div>
+      </div>
+
+      {/* ── ARCHITECTURE SCENARIO: MULTI-SOURCE PURCHASE & RECONCILIATION ── */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Example Scenario &bull; Multi-Source Purchase & Downstream Fairness
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Demonstrates multi-source stock aggregation and downstream protection against upstream disputes.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono uppercase bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold">
+            Live Verified Simulation
+          </span>
+        </div>
+
+        {/* Visual Multi-Source Transaction Pipeline */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
+          {/* Step 1: Distributor A */}
+          <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/30 space-y-1">
+            <span className="text-[10px] font-bold text-blue-700 uppercase block">1. Supplier</span>
+            <div className="font-bold text-slate-900 text-xs">Distributor A</div>
+            <p className="text-[11px] text-slate-600">Sells 1,000 units to Wholesaler B</p>
+            <span className="text-[10px] font-mono font-semibold text-blue-700 block">Issued Invoice</span>
+          </div>
+
+          {/* Step 2: Wholesaler B Intake */}
+          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-1">
+            <span className="text-[10px] font-bold text-slate-600 uppercase block">2. Buyer / Stock</span>
+            <div className="font-bold text-slate-900 text-xs">Wholesaler B</div>
+            <p className="text-[11px] text-slate-600">Receives 1,000 units (700 sold, 300 remaining)</p>
+            <span className="text-[10px] font-mono font-semibold text-emerald-700 block">300 Units On-Hand</span>
+          </div>
+
+          {/* Step 3: Distributor B Alternative Source */}
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-1">
+            <span className="text-[10px] font-bold text-emerald-700 uppercase block">3. Alternative Source</span>
+            <div className="font-bold text-slate-900 text-xs">Distributor B</div>
+            <p className="text-[11px] text-slate-600">Sells 200 units to Wholesaler B</p>
+            <span className="text-[10px] font-mono font-semibold text-emerald-700 block">+200 Approved Units</span>
+          </div>
+
+          {/* Step 4: Wholesaler B Sale */}
+          <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-1">
+            <span className="text-[10px] font-bold text-indigo-700 uppercase block">4. Multi-Source Sale</span>
+            <div className="font-bold text-slate-900 text-xs">Wholesaler B (Seller)</div>
+            <p className="text-[11px] text-slate-600">Sells 500 units to Supplier C (300 + 200)</p>
+            <span className="text-[10px] font-mono font-semibold text-indigo-700 block">500 Total Approved</span>
+          </div>
+
+          {/* Step 5: Supplier C Intake */}
+          <div className="p-3.5 rounded-xl border border-purple-200 bg-purple-50/30 space-y-1">
+            <span className="text-[10px] font-bold text-purple-700 uppercase block">5. Final Buyer</span>
+            <div className="font-bold text-slate-900 text-xs">Supplier C</div>
+            <p className="text-[11px] text-slate-600">Receives 500 units from Wholesaler B</p>
+            <span className="text-[10px] font-mono font-semibold text-purple-700 block">Protected Downstream</span>
+          </div>
+        </div>
+
+        {/* Key Outcomes Checklist */}
+        <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2 text-xs">
+          <div className="font-bold text-slate-800 text-xs mb-1">Key Architectural Outcomes:</div>
+          <div className="space-y-1.5 text-slate-600">
+            <div className="flex items-start space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Wholesaler B's purchase from Distributor B (200 units)</strong> is approved independently even if Distributor A encounters a discrepancy.
+              </span>
+            </div>
+            <div className="flex items-start space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Supplier C's invoice (500 units)</strong> is approved because it is mathematically and legally supported by multiple verified sources (300 + 200).
+              </span>
+            </div>
+            <div className="flex items-start space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Downstream Fairness:</strong> If Distributor A's original transaction is later flagged as disputed, only the 300 units depending on it are affected. Unrelated downstream transactions supported by Distributor B remain fully approved and protected.
+              </span>
+            </div>
           </div>
         </div>
       </div>

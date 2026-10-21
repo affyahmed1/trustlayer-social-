@@ -113,6 +113,9 @@ export interface IssuedInvoiceRecord {
   createdAt: string;
   updatedAt: string;
   fingerprint?: string; // SHA-256 canonical hash
+  lineItems?: InvoiceLineItem[];
+  multiSourceAllocations?: MultiSourceAllocation[];
+  decisionRecords?: DecisionRecord[];
 }
 
 export interface ReceivedInvoiceRecord {
@@ -147,6 +150,9 @@ export interface ReceivedInvoiceRecord {
   createdAt: string;
   updatedAt: string;
   fingerprint?: string;
+  lineItems?: InvoiceLineItem[];
+  multiSourceAllocations?: MultiSourceAllocation[];
+  decisionRecords?: DecisionRecord[];
 }
 
 export interface MatchedRecordSummary {
@@ -193,6 +199,57 @@ export interface RiskIndicator {
   description: string;
 }
 
+export interface MultiSourceAllocation {
+  sourceId: string;
+  sourceName: string;
+  sourceRole: string;
+  invoiceNumber: string;
+  quantityAllocated: number;
+  isDisputed: boolean;
+  disputeReason?: string;
+}
+
+export interface DecisionRecord {
+  id: string;
+  transactionId: string;
+  invoiceNumber: string;
+  decisionStatus: DecisionStatus;
+  reason: string;
+  ruleApplied: string;
+  evidenceSummary: string;
+  actor: string;
+  timestamp: string;
+  previousStatus?: DecisionStatus;
+  supportedQuantity?: number;
+  disputedQuantity?: number;
+  shortfallQuantity?: number;
+}
+
+export interface ReassessmentEvent {
+  id: string;
+  targetTransactionId: string;
+  targetInvoiceNumber: string;
+  previousStatus: DecisionStatus;
+  newStatus: DecisionStatus;
+  reason: string;
+  triggeredByTransactionId?: string;
+  triggeredByInvoiceNumber?: string;
+  timestamp: string;
+  actor: string;
+  evidenceNotes: string;
+}
+
+export interface InvoiceLineItem {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  brand?: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+}
+
 export interface IntelligenceReport {
   runId: string;
   transactionRef: string;
@@ -221,6 +278,25 @@ export interface IntelligenceReport {
     unsupportedQuantity: number;
     isBalanced: boolean;
   };
+  multiSourceBreakdown?: {
+    sources: MultiSourceAllocation[];
+    totalSupported: number;
+    totalDisputed: number;
+    shortfall: number;
+    hasMultiSource: boolean;
+  };
+  downstreamFairness?: {
+    isDownstreamProtected: boolean;
+    unrelatedIssuesDetected: boolean;
+    directlyConnectedIssuesDetected: boolean;
+    summaryNotes: string;
+  };
+  decisionContext?: {
+    finalDecision: 'Approved' | 'Under Review' | 'Rejected';
+    decisionReason: string;
+    stockPositionSummary: string;
+    upstreamStatus: string;
+  };
   missingEvidence: string[];
   detectedConflicts: string[];
   riskIndicators: RiskIndicator[];
@@ -231,3 +307,4 @@ export interface IntelligenceReport {
   isScopedView?: boolean;
   auditTrailId?: string;
 }
+

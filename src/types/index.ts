@@ -166,7 +166,8 @@ export interface ActivityEvent {
     | 'verified'
     | 'mismatch_detected'
     | 'downloaded'
-    | 'corrected';
+    | 'corrected'
+    | 'reversed';
   invoiceId?: string;
   invoiceRef?: string;
   invoiceNumber?: string;

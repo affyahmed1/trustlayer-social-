@@ -46,8 +46,9 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   const [correctedNotes, setCorrectedNotes] = useState(invoice.additionalInfo.notes || '');
 
   const handleCopy = () => {
-    if (invoice.reference) {
-      navigator.clipboard?.writeText(invoice.reference);
+    const invNum = invoice.invoiceNumber || invoice.reference;
+    if (invNum) {
+      navigator.clipboard?.writeText(invNum);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -62,7 +63,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
       dueDate: correctedDueDate,
       additionalInfo: {
         ...invoice.additionalInfo,
-        notes: `${correctedNotes} (Amended correction of ${invoice.reference})`,
+        notes: `${correctedNotes} (Amended correction of ${invoice.invoiceNumber || invoice.reference})`,
       },
     });
     setShowCorrectionForm(false);
@@ -84,27 +85,27 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-mono font-bold text-sm tracking-wide">
-                  {invoice.reference || 'UNREGISTERED DRAFT'}
+                  Invoice {invoice.invoiceNumber || invoice.reference}
                 </span>
                 <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
                   {invoice.status.replace('_', ' ')}
                 </span>
               </div>
-              <span className="text-xs text-slate-400 font-mono">{invoice.invoiceNumber}</span>
+              <span className="text-xs text-slate-400 font-mono">
+                Single Invoice Identity · {invoice.issueDate}
+              </span>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
-            {invoice.reference && (
-              <button
-                onClick={handleCopy}
-                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-medium text-slate-200 flex items-center space-x-1"
-                title="Copy Reference"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied' : 'Copy Ref'}</span>
-              </button>
-            )}
+            <button
+              onClick={handleCopy}
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-medium text-slate-200 flex items-center space-x-1"
+              title="Copy Invoice Number"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? 'Copied' : 'Copy Number'}</span>
+            </button>
 
             <button
               onClick={handlePrint}

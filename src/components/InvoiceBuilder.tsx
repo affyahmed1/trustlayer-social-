@@ -393,10 +393,10 @@ export const InvoiceBuilder: React.FC = () => {
   const handleRegister = () => {
     if (!validateForm()) return;
     const reg = registerInvoice(currentInvoiceData);
-    setReference(reg.reference);
+    setReference(reg.invoiceNumber);
     setFeedbackMessage({
       type: 'success',
-      text: `Registered successfully with TrustLayer reference ${reg.reference}.`,
+      text: `Invoice ${reg.invoiceNumber} registered successfully with TrustLayer.`,
     });
     setTimeout(() => {
       setEditingInvoice(null);
@@ -408,9 +408,9 @@ export const InvoiceBuilder: React.FC = () => {
   const handleSend = () => {
     if (!validateForm()) return;
     let target = currentInvoiceData;
-    if (!target.reference) {
+    if (!target.fingerprint) {
       target = registerInvoice(currentInvoiceData);
-      setReference(target.reference);
+      setReference(target.invoiceNumber);
     }
     sendInvoice(target.id, target.buyer.username);
     setFeedbackMessage({
@@ -436,9 +436,9 @@ export const InvoiceBuilder: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-900">
               {editingInvoice ? 'Edit Invoice' : 'Create Invoice'}
             </h1>
-            {reference && (
+            {invoiceNumber && (
               <span className="font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-xs font-semibold">
-                {reference}
+                {invoiceNumber}
               </span>
             )}
           </div>

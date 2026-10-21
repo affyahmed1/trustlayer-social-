@@ -56,7 +56,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
         </svg>
       </div>
       <span className="text-[10px] font-mono font-semibold text-slate-600 mt-1 tracking-wider">
-        {reference || 'UNREGISTERED'}
+        {invoiceNumber || reference || 'DRAFT'}
       </span>
     </div>
   );
@@ -73,9 +73,9 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
           <div className="flex items-center space-x-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span className="font-semibold tracking-wide">TrustLayer Verified Record</span>
-            {reference ? (
+            {invoiceNumber || reference ? (
               <span className="font-mono bg-slate-800 text-slate-200 px-2 py-0.5 rounded text-[11px]">
-                {reference}
+                {invoiceNumber || reference}
               </span>
             ) : (
               <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[11px] font-medium">

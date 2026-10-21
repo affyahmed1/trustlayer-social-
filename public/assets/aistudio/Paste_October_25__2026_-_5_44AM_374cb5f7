@@ -1,0 +1,834 @@
+# TRUSTLAYER — COMPLETE SYSTEM ARCHITECTURE AND INTELLIGENCE ENGINE
+
+## 1. YOUR ROLE
+
+Act as a principal software architect, senior full-stack engineer, supply-chain systems engineer, database architect, and AI-assisted reconciliation specialist.
+
+You are working on an existing application called TrustLayer.
+
+Your task is to understand the attached system architecture reference image and implement the intended functionality within the existing application.
+
+Do not treat this as a request to build a simple invoice management dashboard.
+
+TrustLayer is intended to become an intelligent supply-chain verification and reconciliation layer connecting brands, distributors, wholesalers, suppliers, retailers, and marketplace-facing businesses.
+
+The initial version focuses on invoice verification, inventory reconciliation, transaction relationships, and evidence-based decisions.
+
+Payment processing, payment-method verification, and financial settlement are NOT part of the current version.
+
+Future expansion must remain possible without implementing those features now.
+
+IMPORTANT:
+The attached architecture image communicates the intended conceptual architecture. The existing application and this written specification determine the implementation details. If the image contains an oversimplification or inconsistency, follow the written business rules below.
+
+---
+
+## 2. FIRST: UNDERSTAND THE EXISTING APPLICATION
+
+Before making changes:
+
+1. Inspect the existing project structure and application architecture.
+2. Identify the current frontend framework, backend, database, authentication, and existing integrations.
+3. Inspect all existing pages, components, routes, models, services, and data flows.
+4. Identify how Inventory, Issued Invoices, Received Invoices, Verification, Network, Overview, Activity Log, and Settings currently work.
+5. Identify existing stock calculations, invoice verification rules, status transitions, and data relationships.
+6. Identify whether data is persistent or stored only in frontend state or demonstration data.
+7. Determine which existing features are functional and which are only UI demonstrations.
+8. Create an internal implementation plan before modifying the application.
+
+Do not remove working functionality.
+
+Do not replace existing business logic with simplified demonstration logic.
+
+Do not introduce a new database, framework, or architecture unnecessarily.
+
+Do not overwrite existing records or silently change the meaning of existing fields.
+
+If the application already has an appropriate implementation of a feature, preserve and improve it rather than creating a duplicate.
+
+If a critical backend or database capability is missing, clearly identify that limitation and implement only what the current environment supports reliably.
+
+---
+
+## 3. CORE PRODUCT DEFINITION
+
+TrustLayer must maintain a structured record of business transactions and use available evidence to evaluate:
+
+* Invoice integrity.
+* Invoice duplication or reuse.
+* Product and quantity consistency.
+* Inventory availability.
+* Stock movements between businesses.
+* Multiple legitimate supply sources.
+* Relationships between upstream and downstream transactions.
+* Unresolved discrepancies.
+* Whether a specific transaction satisfies the configured approval rules.
+
+The system must distinguish between:
+
+A. An invoice being recorded.
+B. An invoice passing document and consistency checks.
+C. A transaction being approved.
+D. Stock being committed to a transaction.
+E. A supply-chain discrepancy being detected.
+F. A business or product having independently established authenticity.
+
+These are not interchangeable states.
+
+A structurally valid invoice is not, by itself, proof that the goods are authentic or that the transaction genuinely occurred.
+
+Never claim authenticity, physical delivery, or independent business legitimacy unless appropriate evidence and verification mechanisms actually exist.
+
+---
+
+## 4. MAIN NAVIGATION
+
+Preserve the existing application structure and organize the relevant features as follows:
+
+* Overview
+* Inventory Management
+
+  * Inventory
+  * Issued Invoices
+  * Received Invoices
+* Verification
+* Network
+* Activity Log
+* Settings
+
+Inventory, Issued Invoices, and Received Invoices must remain separate interfaces.
+
+They must share the appropriate underlying transaction and inventory data instead of maintaining disconnected copies of the same business facts.
+
+Reorganize navigation without unnecessarily redesigning unrelated screens.
+
+Preserve existing routes where possible. If routes must change, implement appropriate redirects or compatibility handling.
+
+---
+
+## 5. USER AND BUSINESS ROLES
+
+The system must support different business roles, including:
+
+* Brand or manufacturer.
+* Distributor.
+* Wholesaler.
+* Supplier.
+* Retailer or marketplace seller.
+* Other authorized business types where required.
+
+Each business must have its own identity and access permissions.
+
+Business relationships must be represented through structured records rather than assumptions based on display names.
+
+Where possible, use stable internal business identifiers.
+
+Do not assume that two businesses with similar names are the same business.
+
+Do not assume that a user can access another business's records simply because a relationship exists in the supply chain.
+
+### Privacy requirements
+
+A business must only see information it is authorized to access.
+
+A downstream seller must not automatically see the names, commercial details, or complete supply-chain relationships of upstream businesses.
+
+The system may internally analyze relationships across multiple businesses, subject to authorization and applicable privacy rules.
+
+External verification results should reveal only the information needed for the authorized decision.
+
+---
+
+## 6. INVENTORY MANAGEMENT
+
+Inventory must represent the product quantities associated with a particular business.
+
+Maintain the appropriate product and inventory relationships, including:
+
+* Business ID.
+* Product ID or internal product reference.
+* SKU, where applicable.
+* Product name.
+* Brand.
+* Opening stock.
+* Approved purchase movements.
+* Approved sales movements.
+* Returns and stock adjustments, when supported.
+* Current stock.
+* Reserved or committed quantity, if supported.
+* Available stock.
+* Disputed or quarantined quantity, if applicable.
+* Last updated timestamp.
+
+Do not treat SKU, product ID, brand, and product name as interchangeable fields.
+
+Use a consistent product identity model to match products across invoices and businesses.
+
+### Stock calculation
+
+Where all movements are represented correctly:
+
+Current Stock = Opening Stock + Approved Stock Increases - Approved Stock Decreases + Approved Adjustments
+
+Available Stock must account for any stock already committed to other transactions.
+
+Do not count an invoice as a completed stock movement merely because someone uploaded it.
+
+An invoice that is pending verification must not automatically increase available stock.
+
+Stock must only change according to explicit, authorized, auditable inventory events.
+
+Prevent the same transaction from affecting stock more than once.
+
+Use atomic database operations, unique transaction references, idempotency controls, or equivalent mechanisms appropriate to the existing architecture.
+
+Never allow a rejected invoice or an unapproved transaction to create an ordinary approved stock increase.
+
+---
+
+## 7. ISSUED INVOICES
+
+Issued Invoices represent invoices created or recorded by a business for a buyer.
+
+Each record should support, as appropriate:
+
+* Internal invoice record ID.
+* Invoice reference.
+* Issuing business.
+* Buyer business.
+* Invoice date.
+* Product identity.
+* Quantity.
+* Unit of measure.
+* Relevant line items.
+* Supporting invoice document.
+* Verification status.
+* Transaction status.
+* Linked inventory movement.
+* Linked corresponding received invoice, if available.
+* Discrepancy information.
+* Audit history.
+
+An invoice may contain multiple product line items.
+
+Do not assume every invoice contains only one product.
+
+When an issued invoice is created, record the invoice accurately, but do not automatically treat the transaction as approved or deduct stock unless the applicable rules permit it.
+
+The issuer's stock must not be reduced twice if the same transaction is edited, resubmitted, or processed again.
+
+---
+
+## 8. RECEIVED INVOICES
+
+Received Invoices represent invoices received or recorded by a business from a supplier.
+
+Each record should support, as appropriate:
+
+* Internal invoice record ID.
+* Invoice reference.
+* Receiving business.
+* Issuing supplier.
+* Invoice date.
+* Product identity.
+* Quantity.
+* Supporting invoice document.
+* Verification status.
+* Transaction status.
+* Linked inventory movement.
+* Corresponding issued invoice, if available.
+* Source transaction references.
+* Discrepancy information.
+* Audit history.
+
+Receiving an invoice is not equivalent to confirming physical delivery.
+
+If the current application does not have reliable delivery confirmation, represent delivery as unknown or unconfirmed rather than assuming it occurred.
+
+The transaction can only increase approved inventory when the required rules and available evidence support that stock movement.
+
+Payment information is outside the scope of this version.
+
+Do not add paid, unpaid, payment received, payment confirmed, or financial settlement workflows as new functionality.
+
+If legacy payment fields already exist, preserve existing data and avoid introducing new dependencies on those fields.
+
+---
+
+## 9. CENTRAL INTELLIGENCE ENGINE
+
+Implement the intelligence workflow as a coordinated set of logical services.
+
+### Engine A: Transaction Verification
+
+Check the available evidence for:
+
+* Required invoice fields.
+* Issuer and recipient identities.
+* Product identity and quantity.
+* Duplicate invoice references.
+* Duplicate document fingerprints, where available.
+* Reused invoices.
+* Conflicting invoice records.
+* Corresponding issued and received invoice records.
+* Applicable business and transaction rules.
+
+A duplicate reference alone must not automatically prove fraud.
+
+Determine whether the records represent a genuine duplicate, an intentional correction, an invoice revision, or a reference collision.
+
+Never silently overwrite conflicting evidence.
+
+### Engine B: Stock Reconciliation
+
+Calculate the expected stock position from recorded inventory movements.
+
+Compare:
+
+* Opening stock.
+* Previously approved purchases.
+* Previously approved sales.
+* New proposed purchases.
+* New proposed sales.
+* Existing stock commitments.
+* Relevant returns and adjustments.
+* Stock attributed to different supply sources, where supported.
+
+Detect discrepancies such as:
+
+* Selling more units than are available.
+* Receiving a quantity inconsistent with supporting evidence.
+* Reusing the same stock movement.
+* A mismatch between an invoice and its linked transaction.
+* An invoice quantity exceeding the source's supported available stock.
+
+Do not assume that a mismatch proves fraud.
+
+Classify the discrepancy and determine what additional evidence is required.
+
+### Engine C: Supply-Chain Intelligence
+
+Analyze authorized transaction relationships across the supply chain.
+
+Determine:
+
+* Which businesses are connected to a transaction.
+* Which inventory movements support a transaction.
+* Which discrepancies are directly related to the stock being evaluated.
+* Which discrepancies are unrelated to that stock.
+* Whether multiple independently supported sources contribute to available inventory.
+* Whether the transaction can be evaluated using its own evidence and the relevant stock records.
+
+The engine must distinguish between a problem with one transaction and a problem that affects an entire business or product.
+
+Never propagate a rejection automatically to every connected downstream transaction.
+
+Never ignore a material discrepancy that directly affects the evidence supporting the transaction being evaluated.
+
+---
+
+## 10. CRITICAL RULE: MULTI-SOURCE STOCK RECONCILIATION
+
+A business must be able to purchase the same product from multiple legitimate suppliers.
+
+Do not permanently bind a business to a single upstream source.
+
+Consider the following example.
+
+### Initial stock
+
+Wholesaler B previously received 1,000 units from Distributor A.
+
+Its records show:
+
+* Approved purchase from Distributor A: 1,000 units.
+* Approved sales to other buyers: 700 units.
+* Remaining stock: 300 units.
+
+Wholesaler B now receives a requirement to supply 500 units to Supplier C.
+
+Its currently available stock is only 300 units.
+
+The system must not automatically approve a 500-unit stock movement simply because an invoice was submitted.
+
+It must identify the 200-unit shortfall.
+
+### Alternative source
+
+Wholesaler B subsequently purchases 200 additional units from Distributor B.
+
+Assume that the new purchase passes the applicable verification rules and its stock movement is properly supported.
+
+The stock calculation becomes:
+
+Previous available stock: 300 units.
+
+Additional approved stock: 200 units.
+
+Total available stock: 500 units.
+
+Proposed supply to Supplier C: 500 units.
+
+Remaining available stock after approval: 0 units.
+
+The system may approve the 500-unit supply transaction if all applicable transaction, inventory, and evidence requirements are satisfied.
+
+The 200-unit purchase from Distributor B must have its own traceable transaction record.
+
+The system must not fabricate stock, ignore existing reservations, or count the same stock twice.
+
+If physical batch-level traceability is unavailable, use transparent quantity-based reconciliation and identify its limitations.
+
+Do not claim that a particular unit physically came from a specific batch unless the evidence supports that conclusion.
+
+---
+
+## 11. TRANSACTION-LEVEL DECISIONS
+
+The final decision must apply to a specific transaction, not indiscriminately to an entire business or supply chain.
+
+Use a controlled decision model.
+
+### APPROVED
+
+Use this status only when the configured approval rules have been satisfied by the available evidence.
+
+Examples:
+
+* Required invoice checks pass.
+* The transaction has no unresolved material discrepancy.
+* The proposed stock movement is supported.
+* Required business permissions and rules are satisfied.
+
+An approval must not be represented as a guarantee of physical authenticity.
+
+### UNDER REVIEW
+
+Use this status when a material question remains unresolved.
+
+Examples:
+
+* Insufficient stock evidence.
+* Unmatched corresponding invoice.
+* Suspected invoice reuse.
+* Conflicting quantities.
+* Unclear source attribution.
+* A directly related upstream discrepancy requiring further investigation.
+
+Where necessary, prevent the disputed stock from being used for additional approved transactions until the issue is resolved.
+
+Do not unnecessarily freeze unrelated inventory.
+
+### REJECTED
+
+Use this status when an applicable rejection rule is conclusively triggered by sufficient evidence or an authorized decision.
+
+Examples:
+
+* A confirmed prohibited duplicate transaction.
+* A material, unresolved contradiction that violates an explicit mandatory approval rule.
+* An invalid transaction that cannot satisfy the required conditions.
+
+Record the reason and supporting evidence.
+
+Do not equate every warning or incomplete record with fraud.
+
+Do not use arbitrary AI confidence scores as the sole basis for irreversible rejection.
+
+Where evidence is insufficient, prefer an appropriate review state.
+
+---
+
+## 12. DOWNSTREAM FAIRNESS AND UPSTREAM DISCREPANCIES
+
+This rule is essential to TrustLayer's design.
+
+Consider the following chain:
+
+Distributor A → Wholesaler B → Supplier C.
+
+Wholesaler B also purchases the same product from Distributor B.
+
+Suppose a discrepancy is later discovered in a transaction originating from Distributor A.
+
+The intelligence engine must determine whether Supplier C's transaction depends on the disputed stock.
+
+### Case 1: Unrelated transaction
+
+Supplier C's purchase is supported by independently recorded stock from Distributor B.
+
+A discrepancy in a separate Distributor A transaction must not automatically invalidate Supplier C's purchase.
+
+Keep unrelated approved transactions approved unless new evidence materially affects them.
+
+### Case 2: Directly related transaction
+
+Supplier C's purchase depends on the specific stock associated with the disputed Distributor A transaction.
+
+The system must identify the relationship and reassess the affected transaction according to the applicable rules.
+
+It must not pretend that the upstream issue is irrelevant.
+
+### Case 3: Mixed-source inventory
+
+A transaction may be supported by stock from more than one source.
+
+Evaluate the quantities and evidence separately.
+
+Do not reject an entire transaction merely because one unrelated source has a problem.
+
+However, if a portion of the proposed supply depends on disputed stock, do not automatically approve that portion.
+
+Determine whether the undisputed stock independently supports the requested quantity.
+
+If only part of the quantity can be supported, show the supported quantity, disputed quantity, and remaining shortfall.
+
+Require a valid transaction amendment or a new transaction where appropriate.
+
+Do not silently change the invoice quantity.
+
+### Case 4: Newly discovered evidence
+
+If previously approved upstream evidence is later materially disproved, identify affected transactions and create a review event.
+
+Do not silently rewrite historical decisions.
+
+Preserve the original decision, its evidence, its timestamp, and the subsequent reassessment.
+
+A later issue must not automatically invalidate unrelated transactions.
+
+---
+
+## 13. TRANSACTION WORKFLOW
+
+Implement the following logical workflow using the existing application architecture.
+
+Step 1: A business records an issued or received invoice.
+
+Step 2: TrustLayer validates the invoice record and available supporting evidence.
+
+Step 3: The system identifies the relevant product, businesses, and transaction relationships.
+
+Step 4: The engine checks the current stock position and outstanding commitments.
+
+Step 5: The engine reconciles quantities across the relevant source transactions.
+
+Step 6: The engine evaluates whether identified discrepancies are directly related or unrelated.
+
+Step 7: The system determines the appropriate transaction status under the configured rules.
+
+Step 8: An authorized approval decision triggers the appropriate inventory movement.
+
+Step 9: The system records the decision, reason, evidence references, and resulting inventory movement.
+
+Step 10: The system updates the relevant business views and authorized verification interfaces.
+
+Step 11: If new evidence changes the situation, the system creates a reassessment event rather than silently altering history.
+
+A transaction must not create duplicate stock movements when processed repeatedly.
+
+The system must handle retries and partial failures safely.
+
+If the issuer and recipient have separate records, link them when sufficient evidence establishes that they correspond to the same transaction.
+
+Do not assume that two invoices match solely because their quantities or product names are similar.
+
+---
+
+## 14. DATA MODEL AND AUDITABILITY
+
+Inspect the existing database and extend it only as necessary.
+
+The implementation should support the following logical entities, whether through existing models or appropriate equivalents:
+
+* Businesses.
+* Business users and permissions.
+* Products.
+* Business inventory.
+* Issued invoices.
+* Received invoices.
+* Invoice line items.
+* Transactions.
+* Inventory movements.
+* Source transaction allocations, where supported.
+* Business relationships.
+* Verification checks.
+* Discrepancies.
+* Decision records.
+* Audit events.
+
+Every important stock movement must be traceable to its supporting transaction or authorized adjustment.
+
+Every decision must preserve:
+
+* The transaction being evaluated.
+* The decision status.
+* The reason.
+* The evidence available at decision time.
+* Relevant source transaction references.
+* The applicable rule or policy.
+* The decision timestamp.
+* The authorized actor or process.
+* Any subsequent reassessment.
+
+Do not store only the latest status if doing so destroys important historical evidence.
+
+Maintain an append-only decision history where practical.
+
+Restrict who can amend, reverse, or supersede an approved transaction.
+
+---
+
+## 15. OVERVIEW AND USER INTERFACE
+
+Preserve the existing application's design and visual identity.
+
+Improve functionality rather than adding decorative complexity.
+
+The Inventory interface should display the business's authorized product and stock information.
+
+Issued Invoices should show invoices created or recorded by the business.
+
+Received Invoices should show invoices received or recorded by the business.
+
+Verification should explain the checks performed and their results.
+
+Network should represent authorized business relationships and relevant transaction connections.
+
+Overview should summarize useful operational information, such as:
+
+* Invoice records.
+* Transactions approved.
+* Transactions under review.
+* Transactions rejected.
+* Stock reconciliation discrepancies.
+* Relevant recent activity.
+
+Do not count a transaction as approved simply because its invoice was uploaded.
+
+Do not display fabricated real-time statistics.
+
+If the existing project contains demonstration records, preserve them as clearly identified demonstration data or replace them only through an explicitly controlled migration.
+
+Never mix fictional demonstration transactions with genuine business records without clear separation.
+
+---
+
+## 16. VERIFICATION RESULTS AND EXPLANATIONS
+
+Every verification result should provide an understandable explanation.
+
+Examples:
+
+APPROVED:
+"Transaction approved. The requested quantity is supported by approved stock records from the relevant supply sources."
+
+UNDER REVIEW:
+"Transaction requires further review. The available stock records do not currently support the full requested quantity."
+
+PARTIALLY SUPPORTED:
+"Some of the requested quantity is supported by available stock records. The remaining quantity requires additional evidence or a valid transaction adjustment."
+
+UPSTREAM ISSUE:
+"A discrepancy was identified in a related upstream transaction. This transaction has been evaluated separately, and its status depends on whether the disputed stock supports the current transaction."
+
+These messages are examples, not hard-coded outcomes.
+
+Generate explanations from actual verification results.
+
+Never tell a user that a transaction passed a check that the system did not perform.
+
+Do not reveal confidential upstream business identities to unauthorized users.
+
+---
+
+## 17. SECURITY AND DATA INTEGRITY
+
+Implement or preserve appropriate safeguards:
+
+* Server-side authorization for sensitive operations.
+* Business-level data isolation.
+* Validation of all incoming records.
+* Protection against duplicate transaction processing.
+* Safe document access.
+* Audit logging.
+* Controlled transaction status changes.
+* Consistent stock updates.
+* Protection against unauthorized inventory adjustments.
+* Appropriate handling of failed or interrupted operations.
+
+Do not trust frontend-only permission checks.
+
+Do not expose sensitive business relationships through APIs or client-side state.
+
+If the current environment lacks secure backend capabilities, explicitly document what remains unprotected rather than claiming production-grade security.
+
+---
+
+## 18. OUT OF SCOPE FOR THIS VERSION
+
+Do not implement:
+
+* Payment processing.
+* Payment-method verification.
+* Payment settlement.
+* Escrow.
+* Banking integrations.
+* Automatic financial transfers.
+* Unrequested cryptocurrency or blockchain functionality.
+* Unsupported claims of real-time ERP integration.
+* Automatic marketplace approval without an actual authorized integration.
+
+Keep the architecture extensible for future purchase orders, returns, delivery evidence, ERP connections, and payment-related features.
+
+Do not implement future modules prematurely.
+
+---
+
+## 19. REQUIRED TEST SCENARIOS
+
+Before declaring the implementation complete, verify these cases using automated tests where the existing project supports them.
+
+TEST 1: Valid transaction.
+
+A supported invoice and sufficient approved stock result in the expected decision and inventory movement.
+
+TEST 2: Insufficient stock.
+
+A proposed sale exceeds available stock. The system must not approve the unsupported quantity.
+
+TEST 3: Multiple sources.
+
+Wholesaler B has 300 available units and receives an independently supported additional 200 units from Distributor B. A 500-unit sale can be approved if every applicable rule passes.
+
+TEST 4: Duplicate processing.
+
+The same approved transaction is processed twice. Inventory must only change once.
+
+TEST 5: Duplicate invoice.
+
+The same invoice is submitted again. The system detects the potential duplicate and prevents duplicate stock movement.
+
+TEST 6: Unrelated upstream issue.
+
+Distributor A has a discrepancy in an unrelated transaction. A properly supported transaction from Distributor B remains unaffected.
+
+TEST 7: Directly connected upstream issue.
+
+A transaction depends on disputed stock. The system identifies the dependency and applies the appropriate review or rejection policy.
+
+TEST 8: Mixed-source quantity.
+
+Only part of a proposed transaction is supported by undisputed stock. The system identifies the supported and disputed quantities without silently changing the invoice.
+
+TEST 9: Later evidence.
+
+A previously approved upstream transaction is later materially disputed. The system preserves the original decision, identifies affected transactions, and creates reassessment events.
+
+TEST 10: Privacy.
+
+An unauthorized business cannot access confidential records belonging to another business.
+
+TEST 11: Missing evidence.
+
+The system does not claim physical delivery, business legitimacy, or product authenticity without sufficient supporting evidence.
+
+TEST 12: Failed transaction.
+
+An interrupted approval does not leave stock movements duplicated or inconsistent.
+
+TEST 13: Multi-line invoice.
+
+A single invoice containing multiple products updates the appropriate inventory records without mixing product quantities.
+
+TEST 14: Corresponding invoices.
+
+The system can link matching issued and received invoice records without assuming that similar-looking references always represent the same transaction.
+
+TEST 15: Audit history.
+
+A subsequent status change does not silently erase the original decision or its supporting evidence.
+
+Report any test that cannot be performed because the current application lacks the required backend, data, or integration.
+
+---
+
+## 20. IMPLEMENTATION STRATEGY
+
+Implement this in controlled phases.
+
+PHASE 1 — INSPECTION
+
+Understand the existing project, identify the current data model, and map the implemented functionality against this specification.
+
+PHASE 2 — ARCHITECTURE ALIGNMENT
+
+Identify the smallest changes required to support the intended architecture. Preserve existing functionality and data.
+
+PHASE 3 — TRANSACTION AND INVENTORY INTEGRITY
+
+Ensure that issued invoices, received invoices, stock movements, and transaction decisions are correctly connected.
+
+PHASE 4 — INTELLIGENCE RULES
+
+Implement or refine multi-source reconciliation, transaction-level discrepancy analysis, and evidence-based decisions.
+
+PHASE 5 — PRIVACY AND AUDITABILITY
+
+Verify access boundaries, decision history, and traceable stock movements.
+
+PHASE 6 — TESTING
+
+Run the required scenarios, fix regressions, and report any remaining limitations.
+
+Do not attempt a destructive, all-at-once rewrite.
+
+If the implementation is too large for one reliable change, complete and verify one phase before continuing.
+
+Do not stop after producing a plan if the current environment allows you to inspect and implement the application.
+
+---
+
+## 21. FINAL ACCEPTANCE CRITERIA
+
+The implementation is successful when:
+
+1. Existing working features remain functional.
+2. Inventory, Issued Invoices, and Received Invoices share consistent transaction and stock data.
+3. Invoice records and stock movements are not treated as the same event.
+4. Stock cannot be counted twice through duplicate processing.
+5. Multiple supply sources can support the same product's inventory.
+6. Transaction decisions are based on applicable rules and available evidence.
+7. An unrelated upstream discrepancy does not automatically invalidate a downstream transaction.
+8. A directly connected material discrepancy is identified and handled appropriately.
+9. Mixed-source inventory can be reconciled without hiding disputed quantities.
+10. Business data remains appropriately isolated.
+11. Verification outcomes are explainable and auditable.
+12. The system does not claim capabilities or verification results that have not actually been implemented.
+13. No payment functionality is added to this version.
+14. Existing data and business workflows are preserved wherever possible.
+
+---
+
+## 22. FINAL RESPONSE REQUIRED FROM YOU
+
+After implementation, report:
+
+1. What the existing application already supported.
+2. What you changed.
+3. Which existing files, components, services, or models were modified.
+4. How invoice verification now interacts with stock reconciliation.
+5. How multiple supply sources are handled.
+6. How unrelated and directly connected upstream discrepancies are distinguished.
+7. Which tests passed.
+8. Which tests failed or remain unimplemented.
+9. Whether data persistence and authorization are genuinely enforced by the current backend.
+10. Any architectural limitation that prevents full implementation.
+
+Be precise and honest.
+
+Do not report a feature as complete merely because its interface exists.
+
+Do not invent test results.
+
+The objective is a reliable, evidence-based TrustLayer transaction and supply-chain intelligence system, not just an impressive-looking dashboard.

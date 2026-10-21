@@ -14,6 +14,8 @@ import {
   ReceivedInvoiceRecord,
   IntelligenceReport,
   InvoiceDocumentAttachment,
+  DecisionRecord,
+  ReassessmentEvent,
 } from '../types/inventory';
 import {
   CURRENT_BUSINESS,
@@ -21,6 +23,7 @@ import {
   INITIAL_INVOICES,
   INITIAL_THREADS,
   INITIAL_ACTIVITY,
+  BUSINESS_ROLES_ENTITIES,
 } from '../data/mockData';
 import {
   INITIAL_INVENTORY,
@@ -34,6 +37,7 @@ import {
   processRejectInvoice,
   processReverseInvoice,
   processManualStockAdjustment,
+  processReassessDownstreamOnDispute,
 } from '../services/inventoryService';
 import { runRecursiveIntelligenceReconciliation } from '../services/intelligenceService';
 import {
@@ -46,6 +50,7 @@ import {
 
 export type NavigationTab =
   | 'home'
+  | 'overview'
   | 'create'
   | 'inventory'
   | 'issued_invoices'
@@ -53,6 +58,7 @@ export type NavigationTab =
   | 'network'
   | 'messages'
   | 'verification'
+  | 'activity_log'
   | 'settings';
 
 interface AppContextType {
@@ -65,12 +71,15 @@ interface AppContextType {
   activeProfile: BusinessEntity;
   setActiveProfile: (profile: BusinessEntity) => void;
   counterparties: BusinessEntity[];
+  businessRoles: (BusinessEntity & { roleCategory: string })[];
 
   // Three-Sheet Architecture & Intelligence State
   inventoryItems: InventoryItem[];
   inventoryMovements: InventoryMovement[];
   issuedInvoices: IssuedInvoiceRecord[];
   receivedInvoices: ReceivedInvoiceRecord[];
+  decisionRecords: DecisionRecord[];
+  reassessmentEvents: ReassessmentEvent[];
   selectedIntelligenceReport: IntelligenceReport | null;
   setSelectedIntelligenceReport: (report: IntelligenceReport | null) => void;
 
@@ -81,6 +90,7 @@ interface AppContextType {
   reverseInvoiceRecord: (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => void;
   adjustStock: (productId: string, businessId: string, delta: number, reason: string, actor: string) => void;
   runIntelligenceCheck: (invoiceId: string, type: 'issued' | 'received') => IntelligenceReport;
+  reassessDisputedTransaction: (disputedInvoiceId: string, reason: string, actor: string) => void;
   attachDocumentToInvoice: (type: 'issued' | 'received', invoiceId: string, attachment: InvoiceDocumentAttachment) => void;
 
   // Selected invoice for detail preview/modal
@@ -190,6 +200,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  const [decisionRecords, setDecisionRecords] = useState<DecisionRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('trustlayer_decisions');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [reassessmentEvents, setReassessmentEvents] = useState<ReassessmentEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('trustlayer_reassessments');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [selectedIntelligenceReport, setSelectedIntelligenceReport] = useState<IntelligenceReport | null>(null);
 
   // Persistence effects
@@ -208,6 +236,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('trustlayer_received_invoices', JSON.stringify(receivedInvoices));
   }, [receivedInvoices]);
+
+  useEffect(() => {
+    localStorage.setItem('trustlayer_decisions', JSON.stringify(decisionRecords));
+  }, [decisionRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('trustlayer_reassessments', JSON.stringify(reassessmentEvents));
+  }, [reassessmentEvents]);
 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -285,12 +321,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const registerInvoice = (invoice: Invoice): Invoice => {
-    // Generate systematic TrustLayer reference
-    const reference = invoice.reference || generateTrustLayerReference(new Date().getFullYear());
+    // Single invoice identity: invoiceNumber is the primary reference.
+    // Preserve existing invoice number or generate compliant invoice number.
+    const invNumber = invoice.invoiceNumber?.trim() || generateTrustLayerReference(new Date().getFullYear());
+    const reference = invNumber; // Kept in sync with invoiceNumber for backwards compatibility
     const registeredAt = new Date().toISOString();
 
     const canonical = createCanonicalInvoicePayload({
-      invoiceNumber: invoice.invoiceNumber,
+      invoiceNumber: invNumber,
       issueDate: invoice.issueDate,
       dueDate: invoice.dueDate,
       currency: invoice.currency,
@@ -313,6 +351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const registeredInvoice: Invoice = {
       ...invoice,
+      invoiceNumber: invNumber,
       reference,
       registeredAt,
       fingerprint,
@@ -332,7 +371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addActivity(
       'registered',
-      `Registered with reference ${reference}. Canonical SHA-256 fingerprint allocated.`,
+      `Invoice ${invNumber} registered with TrustLayer. Canonical SHA-256 fingerprint allocated.`,
       registeredInvoice
     );
 
@@ -345,7 +384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Must be registered before sending
     let target = inv;
-    if (!inv.reference) {
+    if (!inv.fingerprint) {
       target = registerInvoice(inv);
     }
 
@@ -353,7 +392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(i => (i.id === invoiceId ? { ...target, status: 'sent' } : i))
     );
 
-    addActivity('sent', `Invoice ${target.invoiceNumber} (${target.reference}) sent to ${target.buyer.name}.`, target);
+    addActivity('sent', `Invoice ${target.invoiceNumber} sent to ${target.buyer.name}.`, target);
 
     // Also share into message thread if one exists or create thread
     const targetUsername = recipientUsername || target.buyer.username;
@@ -367,8 +406,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const correctInvoice = (originalInvoice: Invoice, corrections: Partial<Invoice>): Invoice => {
     // Preserve original record as cancelled / corrected
-    const newRef = generateTrustLayerReference(new Date().getFullYear());
-    const amendedNumber = `${originalInvoice.invoiceNumber}-REV`;
+    const amendedNumber = corrections.invoiceNumber || `${originalInvoice.invoiceNumber}-REV`;
+    const newRef = amendedNumber;
 
     const newInvoice: Invoice = {
       ...originalInvoice,
@@ -378,7 +417,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       invoiceNumber: amendedNumber,
       status: 'registered',
       verificationStatus: 'verified',
-      originalInvoiceReference: originalInvoice.reference,
+      originalInvoiceReference: originalInvoice.invoiceNumber,
       registeredAt: new Date().toISOString(),
     };
 
@@ -402,7 +441,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const cancelledInv: Invoice = {
             ...inv,
             status: 'cancelled',
-            correctedInvoiceReference: newRef,
+            correctedInvoiceReference: amendedNumber,
           };
           return cancelledInv;
         }
@@ -412,7 +451,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addActivity(
       'corrected',
-      `Original invoice ${originalInvoice.reference} amended. Successor record ${newRef} generated.`,
+      `Original invoice ${originalInvoice.invoiceNumber} amended. Successor record ${amendedNumber} registered.`,
       newInvoice
     );
 
@@ -523,12 +562,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const verifyReference = (reference: string, inspectData?: any): VerificationResult => {
-    const res = verifyInvoiceRecord(reference, invoices, inspectData);
+    const res = verifyInvoiceRecord(
+      reference,
+      {
+        invoices,
+        issuedInvoices,
+        receivedInvoices,
+      },
+      inspectData
+    );
     if (res.status === 'FOUND') {
       if (res.integrity === 'MATCH') {
-        addActivity('verified', `Verification performed for ${reference}: Integrity MATCH.`);
+        addActivity('verified', `Verification performed for invoice ${res.invoiceNumber}: Integrity MATCH.`);
       } else {
-        addActivity('mismatch_detected', `Verification performed for ${reference}: Integrity MISMATCH.`);
+        addActivity('mismatch_detected', `Verification performed for invoice ${res.invoiceNumber}: Integrity MISMATCH.`);
       }
     }
     return res;
@@ -596,17 +643,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       movements: inventoryMovements,
       issuedInvoices,
       receivedInvoices,
+      decisionRecords,
+      reassessmentEvents,
     });
     if (res.error) return { updatedInvoice: null, error: res.error };
     setInventoryItems(res.state.inventory);
     setInventoryMovements(res.state.movements);
     setReceivedInvoices(res.state.receivedInvoices);
+    if (res.state.decisionRecords) {
+      setDecisionRecords(res.state.decisionRecords);
+    }
 
     // Automatic recursive intelligence reconciliation
     const intelReport = runRecursiveIntelligenceReconciliation(invoiceId, 'received', res.state);
     setReceivedInvoices(prev =>
       prev.map(inv => (inv.id === invoiceId ? { ...inv, verificationStatus: intelReport.overallResult as any } : inv))
     );
+    addActivity('verified', `Approved incoming purchase invoice ${invoiceId} and incremented verified warehouse inventory.`);
     return { updatedInvoice: res.updatedInvoice };
   };
 
@@ -616,17 +669,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       movements: inventoryMovements,
       issuedInvoices,
       receivedInvoices,
+      decisionRecords,
+      reassessmentEvents,
     });
     if (res.error) return { updatedInvoice: null, error: res.error };
     setInventoryItems(res.state.inventory);
     setInventoryMovements(res.state.movements);
     setIssuedInvoices(res.state.issuedInvoices);
+    if (res.state.decisionRecords) {
+      setDecisionRecords(res.state.decisionRecords);
+    }
 
     // Automatic recursive intelligence reconciliation
     const intelReport = runRecursiveIntelligenceReconciliation(invoiceId, 'issued', res.state);
     setIssuedInvoices(prev =>
       prev.map(inv => (inv.id === invoiceId ? { ...inv, verificationStatus: intelReport.overallResult as any } : inv))
     );
+    addActivity('verified', `Approved outgoing sales invoice ${invoiceId} and decremented verified warehouse inventory.`);
     return { updatedInvoice: res.updatedInvoice };
   };
 
@@ -636,12 +695,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       movements: inventoryMovements,
       issuedInvoices,
       receivedInvoices,
+      decisionRecords,
+      reassessmentEvents,
     });
     if (type === 'issued') {
       setIssuedInvoices(res.state.issuedInvoices);
     } else {
       setReceivedInvoices(res.state.receivedInvoices);
     }
+    if (res.state.decisionRecords) {
+      setDecisionRecords(res.state.decisionRecords);
+    }
+    addActivity('payment_rejected', `Rejected invoice ${invoiceId}: ${reason}`);
   };
 
   const reverseInvoiceRecord = (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => {
@@ -650,6 +715,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       movements: inventoryMovements,
       issuedInvoices,
       receivedInvoices,
+      decisionRecords,
+      reassessmentEvents,
     });
     setInventoryItems(res.state.inventory);
     setInventoryMovements(res.state.movements);
@@ -658,6 +725,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       setReceivedInvoices(res.state.receivedInvoices);
     }
+    if (res.state.decisionRecords) {
+      setDecisionRecords(res.state.decisionRecords);
+    }
+    addActivity('reversed', `Reversed invoice ${invoiceId} with compensating ledger movement: ${reason}`);
   };
 
   const adjustStock = (productId: string, businessId: string, delta: number, reason: string, actor: string) => {
@@ -669,6 +740,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setInventoryItems(res.state.inventory);
     setInventoryMovements(res.state.movements);
+    addActivity('registered', `Authorized stock adjustment applied: ${delta > 0 ? `+${delta}` : delta} units (${reason}).`);
+  };
+
+  const reassessDisputedTransaction = (disputedInvoiceId: string, reason: string, actor: string) => {
+    const res = processReassessDownstreamOnDispute(disputedInvoiceId, reason, actor, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+      decisionRecords,
+      reassessmentEvents,
+    });
+    setIssuedInvoices(res.state.issuedInvoices);
+    setReceivedInvoices(res.state.receivedInvoices);
+    if (res.reassessmentEvents && res.reassessmentEvents.length > 0) {
+      setReassessmentEvents(prev => [...res.reassessmentEvents, ...prev]);
+    }
+    addActivity(
+      'mismatch_detected',
+      `Downstream reassessment completed for dispute on ${disputedInvoiceId}. Affected ${res.affectedInvoicesCount} transaction(s).`
+    );
   };
 
   const runIntelligenceCheck = (invoiceId: string, type: 'issued' | 'received'): IntelligenceReport => {
@@ -722,6 +814,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInventoryMovements(INITIAL_MOVEMENTS);
     setIssuedInvoices(INITIAL_ISSUED_INVOICES);
     setReceivedInvoices(INITIAL_RECEIVED_INVOICES);
+    setDecisionRecords([]);
+    setReassessmentEvents([]);
     setActiveProfile(CURRENT_BUSINESS);
     localStorage.removeItem('trustlayer_invoices');
     localStorage.removeItem('trustlayer_threads');
@@ -731,6 +825,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('trustlayer_inventory_movements');
     localStorage.removeItem('trustlayer_issued_invoices');
     localStorage.removeItem('trustlayer_received_invoices');
+    localStorage.removeItem('trustlayer_decisions');
+    localStorage.removeItem('trustlayer_reassessments');
   };
 
   return (
@@ -744,6 +840,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeProfile,
         setActiveProfile,
         counterparties: COUNTERPARTIES,
+        businessRoles: BUSINESS_ROLES_ENTITIES,
         selectedInvoice,
         setSelectedInvoice,
         editingInvoice,
@@ -768,6 +865,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         inventoryMovements,
         issuedInvoices,
         receivedInvoices,
+        decisionRecords,
+        reassessmentEvents,
         selectedIntelligenceReport,
         setSelectedIntelligenceReport,
         approveReceivedInvoice,
@@ -775,6 +874,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rejectInvoiceRecord,
         reverseInvoiceRecord,
         adjustStock,
+        reassessDisputedTransaction,
         runIntelligenceCheck,
         attachDocumentToInvoice,
       }}
