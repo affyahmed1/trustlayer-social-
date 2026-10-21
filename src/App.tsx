@@ -11,6 +11,10 @@ import { NetworkView } from './components/NetworkView';
 import { InvoiceDetailModal } from './components/InvoiceDetailModal';
 import { PaymentEvidenceModal } from './components/PaymentEvidenceModal';
 import { RejectInvoiceModal } from './components/RejectInvoiceModal';
+import { InventorySheetView } from './components/InventorySheetView';
+import { IssuedInvoicesSheetView } from './components/IssuedInvoicesSheetView';
+import { ReceivedInvoicesSheetView } from './components/ReceivedInvoicesSheetView';
+import { IntelligenceResultModal } from './components/IntelligenceResultModal';
 import { Invoice } from './types';
 
 const MainLayout: React.FC = () => {
@@ -20,6 +24,8 @@ const MainLayout: React.FC = () => {
     setSelectedInvoice,
     submitPaymentEvidence,
     rejectReceivedInvoice,
+    selectedIntelligenceReport,
+    setSelectedIntelligenceReport,
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -51,6 +57,9 @@ const MainLayout: React.FC = () => {
         {/* Scrollable Viewport */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {currentTab === 'home' && <HomeDashboard />}
+          {currentTab === 'inventory' && <InventorySheetView />}
+          {currentTab === 'issued_invoices' && <IssuedInvoicesSheetView />}
+          {currentTab === 'received_invoices' && <ReceivedInvoicesSheetView />}
           {currentTab === 'create' && <InvoiceBuilder />}
           {currentTab === 'network' && <NetworkView />}
           {currentTab === 'messages' && <MessagingView />}
@@ -93,6 +102,13 @@ const MainLayout: React.FC = () => {
           }}
         />
       )}
+
+      {/* Intelligence Result Modal */}
+      <IntelligenceResultModal
+        report={selectedIntelligenceReport}
+        isOpen={Boolean(selectedIntelligenceReport)}
+        onClose={() => setSelectedIntelligenceReport(null)}
+      />
     </div>
   );
 };

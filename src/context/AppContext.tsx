@@ -13,6 +13,7 @@ import {
   IssuedInvoiceRecord,
   ReceivedInvoiceRecord,
   IntelligenceReport,
+  InvoiceDocumentAttachment,
 } from '../types/inventory';
 import {
   CURRENT_BUSINESS,
@@ -31,6 +32,7 @@ import {
   processApproveReceivedInvoice,
   processApproveIssuedInvoice,
   processRejectInvoice,
+  processReverseInvoice,
   processManualStockAdjustment,
 } from '../services/inventoryService';
 import { runRecursiveIntelligenceReconciliation } from '../services/intelligenceService';
@@ -79,6 +81,7 @@ interface AppContextType {
   reverseInvoiceRecord: (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => void;
   adjustStock: (productId: string, businessId: string, delta: number, reason: string, actor: string) => void;
   runIntelligenceCheck: (invoiceId: string, type: 'issued' | 'received') => IntelligenceReport;
+  attachDocumentToInvoice: (type: 'issued' | 'received', invoiceId: string, attachment: InvoiceDocumentAttachment) => void;
 
   // Selected invoice for detail preview/modal
   selectedInvoice: Invoice | null;
@@ -642,77 +645,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const reverseInvoiceRecord = (type: 'issued' | 'received', invoiceId: string, reason: string, actor: string) => {
-    const timestamp = new Date().toISOString();
+    const res = processReverseInvoice(type, invoiceId, reason, actor, {
+      inventory: inventoryItems,
+      movements: inventoryMovements,
+      issuedInvoices,
+      receivedInvoices,
+    });
+    setInventoryItems(res.state.inventory);
+    setInventoryMovements(res.state.movements);
     if (type === 'issued') {
-      const inv = issuedInvoices.find(i => i.id === invoiceId);
-      if (!inv || !inv.inventoryMovementApplied) return;
-      const compensating: InventoryMovement = {
-        id: `MOV-REV-${Date.now()}`,
-        businessId: inv.issuingBusinessId,
-        businessUsername: inv.issuingBusinessUsername,
-        productId: inv.productId,
-        type: 'RETURN_INWARD',
-        quantity: inv.quantitySold,
-        referenceInvoiceId: inv.id,
-        referenceInvoiceNumber: inv.originalInvoiceNumber,
-        timestamp,
-        actor,
-        notes: `Reversal return inward: ${reason}`,
-        idempotencyKey: `IDEMP-REV-ISSUED-${inv.id}`,
-      };
-      const newMovements = [compensating, ...inventoryMovements];
-      setInventoryMovements(newMovements);
-      setIssuedInvoices(prev =>
-        prev.map(i => (i.id === invoiceId ? { ...i, decisionStatus: 'Reversed', rejectionReason: reason, updatedAt: timestamp } : i))
-      );
-      setInventoryItems(prev =>
-        prev.map(it => {
-          if (it.productId === inv.productId && it.businessId === inv.issuingBusinessId) {
-            return {
-              ...it,
-              currentStock: it.currentStock + inv.quantitySold,
-              totalApprovedSales: Math.max(0, it.totalApprovedSales - inv.quantitySold),
-              lastUpdated: timestamp,
-            };
-          }
-          return it;
-        })
-      );
+      setIssuedInvoices(res.state.issuedInvoices);
     } else {
-      const inv = receivedInvoices.find(i => i.id === invoiceId);
-      if (!inv || !inv.inventoryMovementApplied) return;
-      const compensating: InventoryMovement = {
-        id: `MOV-REV-${Date.now()}`,
-        businessId: inv.receivingBusinessId,
-        businessUsername: inv.receivingBusinessUsername,
-        productId: inv.productId,
-        type: 'RETURN_OUTWARD',
-        quantity: -inv.quantityPurchased,
-        referenceInvoiceId: inv.id,
-        referenceInvoiceNumber: inv.originalInvoiceNumber,
-        timestamp,
-        actor,
-        notes: `Reversal return outward: ${reason}`,
-        idempotencyKey: `IDEMP-REV-REC-${inv.id}`,
-      };
-      const newMovements = [compensating, ...inventoryMovements];
-      setInventoryMovements(newMovements);
-      setReceivedInvoices(prev =>
-        prev.map(i => (i.id === invoiceId ? { ...i, decisionStatus: 'Reversed', rejectionReason: reason, updatedAt: timestamp } : i))
-      );
-      setInventoryItems(prev =>
-        prev.map(it => {
-          if (it.productId === inv.productId && it.businessId === inv.receivingBusinessId) {
-            return {
-              ...it,
-              currentStock: Math.max(0, it.currentStock - inv.quantityPurchased),
-              totalApprovedPurchases: Math.max(0, it.totalApprovedPurchases - inv.quantityPurchased),
-              lastUpdated: timestamp,
-            };
-          }
-          return it;
-        })
-      );
+      setReceivedInvoices(res.state.receivedInvoices);
     }
   };
 
@@ -728,14 +672,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const runIntelligenceCheck = (invoiceId: string, type: 'issued' | 'received'): IntelligenceReport => {
-    const report = runRecursiveIntelligenceReconciliation(invoiceId, type, {
-      inventory: inventoryItems,
-      movements: inventoryMovements,
-      issuedInvoices,
-      receivedInvoices,
-    });
+    const userRole = activeProfile.username === '@nexusglobal' ? 'Seller' : 'Supplier';
+    const report = runRecursiveIntelligenceReconciliation(
+      invoiceId,
+      type,
+      {
+        inventory: inventoryItems,
+        movements: inventoryMovements,
+        issuedInvoices,
+        receivedInvoices,
+      },
+      userRole
+    );
     setSelectedIntelligenceReport(report);
     return report;
+  };
+
+  const attachDocumentToInvoice = (
+    type: 'issued' | 'received',
+    invoiceId: string,
+    attachment: InvoiceDocumentAttachment
+  ) => {
+    const timestamp = new Date().toISOString();
+    if (type === 'issued') {
+      setIssuedInvoices(prev =>
+        prev.map(inv =>
+          inv.id === invoiceId
+            ? { ...inv, documentAttachment: attachment, invoiceDocRef: attachment.fileName, updatedAt: timestamp }
+            : inv
+        )
+      );
+    } else {
+      setReceivedInvoices(prev =>
+        prev.map(inv =>
+          inv.id === invoiceId
+            ? { ...inv, documentAttachment: attachment, invoiceDocRef: attachment.fileName, updatedAt: timestamp }
+            : inv
+        )
+      );
+    }
+    addActivity('registered', `Attached official invoice document ${attachment.fileName} to ${invoiceId}.`);
   };
 
   const resetDemoData = () => {
@@ -800,6 +776,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reverseInvoiceRecord,
         adjustStock,
         runIntelligenceCheck,
+        attachDocumentToInvoice,
       }}
     >
       {children}

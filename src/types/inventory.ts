@@ -70,6 +70,17 @@ export interface InventoryMovement {
   idempotencyKey: string;
 }
 
+export interface InvoiceDocumentAttachment {
+  id: string;
+  fileName: string;
+  fileType: string; // 'application/pdf' | 'image/png' | 'image/jpeg' | ...
+  fileSize: number; // in bytes
+  dataUrl?: string; // base64 or object URL
+  uploadedAt: string;
+  storageType: 'session_demo' | 'durable_cloud';
+  fingerprint?: string;
+}
+
 export interface IssuedInvoiceRecord {
   id: string; // TrustLayer Record ID, e.g. TL-REC-2026-901
   originalInvoiceNumber: string;
@@ -91,6 +102,7 @@ export interface IssuedInvoiceRecord {
   paymentStatus: PaymentStatus;
   paymentDate?: string;
   invoiceDocRef: string;
+  documentAttachment?: InvoiceDocumentAttachment;
   decisionStatus: DecisionStatus;
   decisionBy?: string;
   decisionAt?: string;
@@ -124,6 +136,7 @@ export interface ReceivedInvoiceRecord {
   paymentStatus: PaymentStatus;
   paymentDate?: string;
   invoiceDocRef: string;
+  documentAttachment?: InvoiceDocumentAttachment;
   decisionStatus: DecisionStatus;
   decisionBy?: string;
   decisionAt?: string;
@@ -157,6 +170,8 @@ export interface UpstreamHopFinding {
   date: string;
   status: 'VERIFIED' | 'MISSING_LINK' | 'PARTIAL' | 'UNREGISTERED';
   notes: string;
+  isRedacted?: boolean;
+  redactionReason?: string;
 }
 
 export interface DownstreamHopFinding {
@@ -212,4 +227,7 @@ export interface IntelligenceReport {
   explanation: string;
   recommendedNextAction: string;
   timestamp: string;
+  requestorRole?: string;
+  isScopedView?: boolean;
+  auditTrailId?: string;
 }

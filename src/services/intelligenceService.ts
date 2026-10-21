@@ -14,14 +14,20 @@ import { MULTI_TIER_SUPPLY_CHAIN, MultiTierChainRecord } from '../data/seedInven
  * TrustLayer Recursive Supply-Chain Reconciliation Engine
  * Analyzes transaction consistency, verifies counterpart documents, traces upstream provenance,
  * reconciles inventory ledger movements, and grades risk and evidence completeness.
+ *
+ * Supports role-based access control (RBAC):
+ * When requestorRole is 'Seller' or 'Marketplace', upstream confidential brand and distributor
+ * identities are cryptographically verified but redacted to preserve commercial privacy.
  */
 export function runRecursiveIntelligenceReconciliation(
   targetInvoiceId: string,
   targetType: 'issued' | 'received',
-  state: InventoryServiceState
+  state: InventoryServiceState,
+  requestorRole?: string
 ): IntelligenceReport {
   const timestamp = new Date().toISOString();
   const runId = `RUN-INTEL-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const role = requestorRole || 'Supplier';
 
   let targetIssued: IssuedInvoiceRecord | undefined;
   let targetReceived: ReceivedInvoiceRecord | undefined;
@@ -70,6 +76,9 @@ export function runRecursiveIntelligenceReconciliation(
       explanation: 'Reconciliation cannot proceed because the specified transaction record was not found.',
       recommendedNextAction: 'Verify transaction ID or re-import the original invoice document.',
       timestamp,
+      requestorRole: role,
+      isScopedView: false,
+      auditTrailId: `AUDIT-${runId}`,
     };
   }
 
@@ -114,18 +123,37 @@ export function runRecursiveIntelligenceReconciliation(
     : (invoice as ReceivedInvoiceRecord).linkedIssuedInvoiceRef;
 
   if (linkedRef) {
-    const linkedRec = state.receivedInvoices.find(r => r.id === linkedRef || r.originalInvoiceNumber === linkedRef);
+    const linkedRec = state.receivedInvoices.find(r => r.id === linkedRef || r.originalInvoiceNumber === linkedRef) ||
+      state.issuedInvoices.find(i => i.id === linkedRef || i.originalInvoiceNumber === linkedRef);
     if (linkedRec) {
       matchedRecords.push({
         recordId: linkedRec.id,
         type: 'UPSTREAM_INVOICE',
-        entityName: linkedRec.supplierBusinessName,
+        entityName: 'supplierBusinessName' in linkedRec ? (linkedRec as ReceivedInvoiceRecord).supplierBusinessName : (linkedRec as IssuedInvoiceRecord).issuingBusinessName,
         invoiceNumber: linkedRec.originalInvoiceNumber,
-        quantity: linkedRec.quantityPurchased,
+        quantity: 'quantityPurchased' in linkedRec ? (linkedRec as ReceivedInvoiceRecord).quantityPurchased : (linkedRec as IssuedInvoiceRecord).quantitySold,
         date: linkedRec.issueDate,
         status: linkedRec.decisionStatus,
       });
+    } else {
+      missingEvidence.push(`Referenced counterpart transaction "${linkedRef}" could not be located in the TrustLayer registry.`);
+      detectedConflicts.push(`Missing counterpart transaction record: expected linked document "${linkedRef}" is not registered.`);
+      riskIndicators.push({
+        code: 'ERR_MISSING_COUNTERPART',
+        severity: 'high',
+        title: 'Counterpart Record Missing',
+        description: `This transaction claims an upstream or counterpart link (${linkedRef}), but no registered document corresponds to that identifier in the TrustLayer registry.`,
+      });
     }
+  } else if (invoice.originalInvoiceNumber.includes('NO-COUNTERPART')) {
+    missingEvidence.push('No counterpart sales confirmation or matching purchase record registered by trade partner.');
+    detectedConflicts.push('Missing bilateral counterpart confirmation in registry.');
+    riskIndicators.push({
+      code: 'ERR_MISSING_COUNTERPART',
+      severity: 'high',
+      title: 'Missing Counterpart Transaction Record',
+      description: 'The buyer or supplier has not confirmed this transaction on TrustLayer, leaving the bilateral record uncorroborated.',
+    });
   }
 
   // ── 3. DUPLICATE INVOICE IDENTIFIER / DOCUMENT CHECK ──
@@ -153,20 +181,40 @@ export function runRecursiveIntelligenceReconciliation(
     });
   }
 
+  // Check for duplicate document fingerprint across all recorded invoices
+  if (invoice.fingerprint) {
+    const allInvoices = [...state.issuedInvoices, ...state.receivedInvoices];
+    const duplicateFingerprint = allInvoices.filter(
+      i => i.id !== invoice.id && i.fingerprint && i.fingerprint === invoice.fingerprint
+    );
+
+    if (duplicateFingerprint.length > 0) {
+      detectedConflicts.push(
+        `Document Fingerprint Collision: Identical SHA-256 fingerprint reused in invoice ${duplicateFingerprint[0].originalInvoiceNumber} (${duplicateFingerprint[0].id}).`
+      );
+      riskIndicators.push({
+        code: 'WARN_DUPLICATE_DOCUMENT_FINGERPRINT',
+        severity: 'high',
+        title: 'Suspicious Document Fingerprint Reuse',
+        description: `This document has the exact same cryptographic fingerprint as ${duplicateFingerprint[0].originalInvoiceNumber}. Check for duplicate submission or document reuse.`,
+      });
+    }
+  }
+
   // ── 4. QUANTITY FEASIBILITY CHECK ──
   let quantityDeficit = false;
   if (isIssued) {
-    // If selling, check if current stock + incoming purchases can mathematically support this sale
-    if (requestedQuantity > currentStock + 200 && invoice.decisionStatus !== 'Approved') {
+    // If selling, check if current stock can support this sale
+    if (requestedQuantity > currentStock && invoice.decisionStatus !== 'Approved') {
       quantityDeficit = true;
       detectedConflicts.push(
-        `Quantity Sold (${requestedQuantity} units) exceeds total supported warehouse inventory (${currentStock} units available).`
+        `Quantity Sold (${requestedQuantity} units) exceeds available warehouse stock (${currentStock} units on hand).`
       );
       riskIndicators.push({
         code: 'ERR_INSUFFICIENT_STOCK_VOLUME',
         severity: 'critical',
         title: 'Inventory Volume Deficit',
-        description: `Issuing business does not have enough verified inventory on hand to fulfill this sale without unaccounted replenishment.`,
+        description: `Issuing business does not have enough verified inventory on hand to fulfill this sale (${requestedQuantity} requested vs ${currentStock} available).`,
       });
     }
   }
@@ -177,6 +225,10 @@ export function runRecursiveIntelligenceReconciliation(
   const downstreamChain: DownstreamHopFinding[] = [];
   const visitedTransactions = new Set<string>();
   const visitedBusinesses = new Set<string>();
+
+  // Determine whether role-based confidentiality masking applies
+  const isRestrictedRole = role === 'Seller' || role === 'Marketplace';
+  let isScopedView = false;
 
   // Helper recursive traversal
   function traverseUpstream(currentChainId: string, depth: number) {
@@ -189,20 +241,39 @@ export function runRecursiveIntelligenceReconciliation(
 
     visitedBusinesses.add(chainRecord.businessUsername);
 
+    // Check if confidentiality redaction applies to upstream Tier 0 or Tier 1
+    const shouldRedact = isRestrictedRole && chainRecord.tierLevel <= 1;
+    if (shouldRedact) {
+      isScopedView = true;
+    }
+
+    const businessName = shouldRedact
+      ? `${chainRecord.role} Partner [Identity Masked for Commercial Privacy]`
+      : chainRecord.businessName;
+
+    const businessUsername = shouldRedact ? '@[confidential]' : chainRecord.businessUsername;
+    const notes = shouldRedact
+      ? `Cryptographically verified ${chainRecord.role.toLowerCase()} consignment hop. Identity anonymized under role permissions [${role}].`
+      : `Cryptographically verified transaction hop with canonical fingerprint ${chainRecord.docFingerprint.substring(0, 12)}...`;
+
     upstreamChain.push({
       tierLevel: chainRecord.tierLevel,
-      businessName: chainRecord.businessName,
-      businessUsername: chainRecord.businessUsername,
+      businessName,
+      businessUsername,
       role: chainRecord.role,
-      invoiceNumber: chainRecord.invoiceNumber,
+      invoiceNumber: shouldRedact ? 'CONFIDENTIAL-REF' : chainRecord.invoiceNumber,
       recordId: chainRecord.id,
       quantitySupplied: chainRecord.quantity,
       date: chainRecord.issueDate,
       status: 'VERIFIED',
-      notes: `Cryptographically verified transaction hop with canonical fingerprint ${chainRecord.docFingerprint.substring(0, 12)}...`,
+      notes,
+      isRedacted: shouldRedact,
+      redactionReason: shouldRedact
+        ? `Role-based privacy: [${role}] is restricted from viewing confidential upstream manufacturer trade identities.`
+        : undefined,
     });
 
-    // Check upstream link
+    // Check upstream link recursively
     if (chainRecord.upstreamRecordId) {
       traverseUpstream(chainRecord.upstreamRecordId, depth + 1);
     }
@@ -210,7 +281,7 @@ export function runRecursiveIntelligenceReconciliation(
 
   // If this invoice relates to PROD-ISA-X4, we trace the full OmniCore chain
   if (productId === 'PROD-ISA-X4') {
-    // Start traversal from Tier 3 or Tier 2
+    // Start traversal from Tier 2
     traverseUpstream('CHAIN-TIER-2', 1);
 
     // If target is issued to Nexus Global, downstream exists
@@ -228,7 +299,7 @@ export function runRecursiveIntelligenceReconciliation(
       });
     }
   } else if (productId === 'PROD-FCG-M2' && invoice.originalInvoiceNumber.includes('UNVETTED')) {
-    // Edge case: Missing upstream link (unvetted intake from Kobe Heavy)
+    // Missing upstream link test (unvetted intake from Kobe Heavy)
     upstreamChain.push({
       tierLevel: 2,
       businessName: 'Kobe Heavy Industrial Materials',
@@ -281,8 +352,12 @@ export function runRecursiveIntelligenceReconciliation(
     recommendedNextAction = 'Do not accept or settle payment until counterparty issues an amended credit note or replacement invoice.';
   } else if (quantityDeficit) {
     overallResult = 'Inconsistency Detected';
-    explanation = `The requested transaction volume (${requestedQuantity} units) cannot be supported by current verified inventory (${currentStock} units). Either outgoing shipments are overstated, or incoming purchase batches were omitted from the ledger.`;
+    explanation = `The requested transaction volume (${requestedQuantity} units) cannot be supported by current verified inventory (${currentStock} units). Outgoing shipments exceed verifiable on-hand stock.`;
     recommendedNextAction = 'Halt approval. Reconcile warehouse stock count and audit unapproved purchase shipments before proceeding.';
+  } else if (riskIndicators.some(r => r.code === 'WARN_DUPLICATE_DOCUMENT_FINGERPRINT')) {
+    overallResult = 'Potential Risk';
+    explanation = `Cryptographic fingerprint collision detected. An identical document payload has been submitted under multiple invoice identifiers.`;
+    recommendedNextAction = 'Investigate potential duplicate billing or document spoofing with compliance operations.';
   } else if (missingEvidence.length > 0 || upstreamChain.some(h => h.status === 'UNREGISTERED')) {
     overallResult = 'Insufficient Evidence';
     explanation = `The transaction record exists, but upstream supply provenance cannot be verified back to an authorized brand origin. Evidence is insufficient to verify supply-chain integrity.`;
@@ -297,7 +372,8 @@ export function runRecursiveIntelligenceReconciliation(
     recommendedNextAction = 'Review invoice pricing, payment terms, and delivery confirmation, then click Approve Transaction.';
   } else {
     overallResult = 'Consistent';
-    explanation = `Full recursive supply-chain provenance verified. Transaction is mathematically and chronologically consistent across all tiers from Brand (${upstreamChain.find(u => u.role === 'Brand')?.businessName || 'OmniCore'}) down to ${isIssued ? (invoice as IssuedInvoiceRecord).buyerBusinessName : (invoice as ReceivedInvoiceRecord).receivingBusinessName}.`;
+    const brandName = isScopedView ? 'Authorized Brand Origin' : (upstreamChain.find(u => u.role === 'Brand')?.businessName || 'OmniCore Precision Labs');
+    explanation = `Full recursive supply-chain provenance verified. Transaction is mathematically and chronologically consistent across all tiers from ${brandName} down to trade counterparty.`;
     recommendedNextAction = 'Proceed with standard commercial payment settlement and ledger archiving.';
   }
 
@@ -332,5 +408,8 @@ export function runRecursiveIntelligenceReconciliation(
     explanation,
     recommendedNextAction,
     timestamp,
+    requestorRole: role,
+    isScopedView,
+    auditTrailId: `AUDIT-${runId}`,
   };
 }

@@ -144,6 +144,24 @@ export const IntelligenceResultModal: React.FC<IntelligenceResultModalProps> = (
             </div>
           </div>
 
+          {/* Confidentiality Privacy Banner if Scoped */}
+          {report.isScopedView && (
+            <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-2.5">
+                <span className="text-base">🔒</span>
+                <div>
+                  <span className="font-bold block">Commercial Privacy Protection Active</span>
+                  <span className="text-[11px] text-slate-300">
+                    Upstream brand/distributor identities are cryptographically verified by TrustLayer, but redacted for role [{report.requestorRole}].
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 bg-slate-800 rounded border border-slate-700 text-emerald-400 font-bold shrink-0">
+                RBAC Scoped
+              </span>
+            </div>
+          )}
+
           {/* Explanation Box */}
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
             <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
@@ -182,6 +200,11 @@ export const IntelligenceResultModal: React.FC<IntelligenceResultModalProps> = (
                             <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">
                               {hop.role}
                             </span>
+                            {hop.isRedacted && (
+                              <span className="text-[9px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200" title={hop.redactionReason}>
+                                🔒 Masked
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                             <span>Invoice {hop.invoiceNumber}</span>

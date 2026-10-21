@@ -175,8 +175,9 @@ export const InventorySheetView: React.FC = () => {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50/70 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                <th className="py-3 px-4">Product ID & SKU</th>
-                <th className="py-3 px-4">Product Name & Brand</th>
+                <th className="py-3 px-4">SKU</th>
+                <th className="py-3 px-4">Product Name</th>
+                <th className="py-3 px-4">Brand</th>
                 <th className="py-3 px-4 text-right">Opening Stock</th>
                 <th className="py-3 px-4 text-right text-emerald-700">Approved Purchases (+)</th>
                 <th className="py-3 px-4 text-right text-blue-700">Approved Sales (-)</th>
@@ -190,16 +191,21 @@ export const InventorySheetView: React.FC = () => {
               {filteredItems.length > 0 ? (
                 filteredItems.map(item => (
                   <tr key={item.productId} className="hover:bg-slate-50/60 transition-colors">
-                    {/* Product ID & SKU */}
-                    <td className="py-3.5 px-4">
-                      <div className="font-mono font-bold text-slate-900">{item.productId}</div>
-                      <div className="text-[11px] font-mono text-slate-400">{item.sku}</div>
+                    {/* SKU */}
+                    <td className="py-3.5 px-4 font-mono font-semibold text-slate-800">
+                      {item.sku}
                     </td>
 
-                    {/* Product Name & Brand */}
+                    {/* Product Name */}
+                    <td className="py-3.5 px-4 font-semibold text-slate-900">
+                      {item.productName}
+                    </td>
+
+                    {/* Brand */}
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{item.productName}</div>
-                      <div className="text-[11px] text-indigo-600 font-medium">{item.brand}</div>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
+                        {item.brand}
+                      </span>
                     </td>
 
                     {/* Opening Stock */}
@@ -283,7 +289,7 @@ export const InventorySheetView: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <Package className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                     <p className="text-sm font-semibold text-slate-600">No inventory records found</p>
                     <p className="text-xs text-slate-400">Try adjusting your search criteria or status filter.</p>

@@ -11,12 +11,18 @@ import {
   UserCheck,
   FileCheck2,
   GitBranch,
+  Package,
+  ArrowUpRight,
+  ArrowDownLeft,
 } from 'lucide-react';
 
 export const HomeDashboard: React.FC = () => {
   const {
     setCurrentTab,
     activeProfile,
+    inventoryItems,
+    issuedInvoices,
+    receivedInvoices,
   } = useApp();
 
   // Network connection metrics for the authenticated business
@@ -143,6 +149,110 @@ export const HomeDashboard: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ── THREE-SHEET ARCHITECTURE SUMMARY ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Three-Sheet Ledger System
+            </h2>
+            <span className="text-[10px] font-mono text-slate-400">Append-only supply-chain inventory & invoices</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Sheet A: Inventory */}
+          <div
+            onClick={() => setCurrentTab('inventory')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between text-slate-400 mb-2">
+                <span className="text-[10px] font-mono uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                  Sheet A &bull; Inventory
+                </span>
+                <Package className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+              </div>
+              <div className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                Product Inventory
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                One immutable record per product with append-only stock movement provenance.
+              </p>
+            </div>
+            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+              <span className="text-[11px] font-mono text-slate-400">
+                {inventoryItems.filter(i => i.businessUsername === activeProfile.username || i.businessId === activeProfile.id).length} Tracked Products
+              </span>
+              <span className="flex items-center space-x-1">
+                <span>View Sheet</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </div>
+
+          {/* Sheet B: Issued Invoices */}
+          <div
+            onClick={() => setCurrentTab('issued_invoices')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-blue-400 hover:shadow-sm cursor-pointer transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between text-slate-400 mb-2">
+                <span className="text-[10px] font-mono uppercase font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                  Sheet B &bull; Issued
+                </span>
+                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+              </div>
+              <div className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                Issued Invoices
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Permanent records of outgoing sales. Approvals validate stock and decrease inventory exactly once.
+              </p>
+            </div>
+            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-blue-600">
+              <span className="text-[11px] font-mono text-slate-400">
+                {issuedInvoices.filter(i => i.issuingBusinessUsername === activeProfile.username || i.issuingBusinessId === activeProfile.id).length} Outgoing Invoices
+              </span>
+              <span className="flex items-center space-x-1">
+                <span>View Sheet</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </div>
+
+          {/* Sheet C: Received Invoices */}
+          <div
+            onClick={() => setCurrentTab('received_invoices')}
+            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-emerald-400 hover:shadow-sm cursor-pointer transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between text-slate-400 mb-2">
+                <span className="text-[10px] font-mono uppercase font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                  Sheet C &bull; Received
+                </span>
+                <ArrowDownLeft className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+              </div>
+              <div className="text-lg font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
+                Received Invoices
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Permanent records of supplier purchases. Approvals increase receiving stock with idempotency.
+              </p>
+            </div>
+            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-emerald-600">
+              <span className="text-[11px] font-mono text-slate-400">
+                {receivedInvoices.filter(i => i.receivingBusinessUsername === activeProfile.username || i.receivingBusinessId === activeProfile.id).length} Incoming Invoices
+              </span>
+              <span className="flex items-center space-x-1">
+                <span>View Sheet</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

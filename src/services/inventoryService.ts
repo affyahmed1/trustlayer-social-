@@ -384,3 +384,190 @@ export function processManualStockAdjustment(
     movement,
   };
 }
+
+/**
+ * Reverses an approved invoice transaction (issued or received).
+ * Creates a compensating append-only inventory movement record,
+ * preserves original invoice and history, and recalculates stock.
+ */
+export function processReverseInvoice(
+  type: 'issued' | 'received',
+  invoiceId: string,
+  reason: string,
+  actor: string,
+  state: InventoryServiceState
+): {
+  state: InventoryServiceState;
+  updatedInvoice: IssuedInvoiceRecord | ReceivedInvoiceRecord | null;
+  compensatingMovement?: InventoryMovement;
+  error?: string;
+} {
+  const timestamp = new Date().toISOString();
+
+  if (type === 'issued') {
+    const invoice = state.issuedInvoices.find(i => i.id === invoiceId);
+    if (!invoice) return { state, updatedInvoice: null, error: 'Issued invoice not found.' };
+    if (invoice.decisionStatus === 'Reversed') {
+      return { state, updatedInvoice: invoice };
+    }
+
+    if (!invoice.inventoryMovementApplied) {
+      const updated: IssuedInvoiceRecord = {
+        ...invoice,
+        decisionStatus: 'Reversed',
+        decisionBy: actor,
+        decisionAt: timestamp,
+        rejectionReason: reason,
+        updatedAt: timestamp,
+      };
+      return {
+        state: {
+          ...state,
+          issuedInvoices: state.issuedInvoices.map(i => (i.id === invoiceId ? updated : i)),
+        },
+        updatedInvoice: updated,
+      };
+    }
+
+    const idempotencyKey = `IDEMP-REV-ISSUED-${invoice.id}`;
+    const compensating: InventoryMovement = {
+      id: `MOV-REV-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      businessId: invoice.issuingBusinessId,
+      businessUsername: invoice.issuingBusinessUsername,
+      productId: invoice.productId,
+      type: 'RETURN_INWARD',
+      quantity: invoice.quantitySold,
+      referenceInvoiceId: invoice.id,
+      referenceInvoiceNumber: invoice.originalInvoiceNumber,
+      timestamp,
+      actor,
+      notes: `Reversal return inward: ${reason}`,
+      idempotencyKey,
+    };
+
+    const newMovements = [compensating, ...state.movements];
+
+    const updatedInvoice: IssuedInvoiceRecord = {
+      ...invoice,
+      decisionStatus: 'Reversed',
+      decisionBy: actor,
+      decisionAt: timestamp,
+      rejectionReason: reason,
+      updatedAt: timestamp,
+    };
+
+    const updatedInventory = state.inventory.map(item => {
+      if (item.productId === invoice.productId && item.businessId === invoice.issuingBusinessId) {
+        const { approvedPurchases, approvedSales, adjustments, currentStock } = recalculateProductStock(
+          item.productId,
+          item.businessId,
+          item.openingStock,
+          newMovements
+        );
+        return {
+          ...item,
+          totalApprovedPurchases: approvedPurchases,
+          totalApprovedSales: approvedSales,
+          authorizedAdjustments: adjustments,
+          currentStock,
+          lastUpdated: timestamp,
+        };
+      }
+      return item;
+    });
+
+    return {
+      state: {
+        ...state,
+        movements: newMovements,
+        issuedInvoices: state.issuedInvoices.map(i => (i.id === invoiceId ? updatedInvoice : i)),
+        inventory: updatedInventory,
+      },
+      updatedInvoice,
+      compensatingMovement: compensating,
+    };
+  } else {
+    const invoice = state.receivedInvoices.find(i => i.id === invoiceId);
+    if (!invoice) return { state, updatedInvoice: null, error: 'Received invoice not found.' };
+    if (invoice.decisionStatus === 'Reversed') {
+      return { state, updatedInvoice: invoice };
+    }
+
+    if (!invoice.inventoryMovementApplied) {
+      const updated: ReceivedInvoiceRecord = {
+        ...invoice,
+        decisionStatus: 'Reversed',
+        decisionBy: actor,
+        decisionAt: timestamp,
+        rejectionReason: reason,
+        updatedAt: timestamp,
+      };
+      return {
+        state: {
+          ...state,
+          receivedInvoices: state.receivedInvoices.map(i => (i.id === invoiceId ? updated : i)),
+        },
+        updatedInvoice: updated,
+      };
+    }
+
+    const idempotencyKey = `IDEMP-REV-REC-${invoice.id}`;
+    const compensating: InventoryMovement = {
+      id: `MOV-REV-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      businessId: invoice.receivingBusinessId,
+      businessUsername: invoice.receivingBusinessUsername,
+      productId: invoice.productId,
+      type: 'RETURN_OUTWARD',
+      quantity: -invoice.quantityPurchased,
+      referenceInvoiceId: invoice.id,
+      referenceInvoiceNumber: invoice.originalInvoiceNumber,
+      timestamp,
+      actor,
+      notes: `Reversal return outward: ${reason}`,
+      idempotencyKey,
+    };
+
+    const newMovements = [compensating, ...state.movements];
+
+    const updatedInvoice: ReceivedInvoiceRecord = {
+      ...invoice,
+      decisionStatus: 'Reversed',
+      decisionBy: actor,
+      decisionAt: timestamp,
+      rejectionReason: reason,
+      updatedAt: timestamp,
+    };
+
+    const updatedInventory = state.inventory.map(item => {
+      if (item.productId === invoice.productId && item.businessId === invoice.receivingBusinessId) {
+        const { approvedPurchases, approvedSales, adjustments, currentStock } = recalculateProductStock(
+          item.productId,
+          item.businessId,
+          item.openingStock,
+          newMovements
+        );
+        return {
+          ...item,
+          totalApprovedPurchases: approvedPurchases,
+          totalApprovedSales: approvedSales,
+          authorizedAdjustments: adjustments,
+          currentStock,
+          lastUpdated: timestamp,
+        };
+      }
+      return item;
+    });
+
+    return {
+      state: {
+        ...state,
+        movements: newMovements,
+        receivedInvoices: state.receivedInvoices.map(i => (i.id === invoiceId ? updatedInvoice : i)),
+        inventory: updatedInventory,
+      },
+      updatedInvoice,
+      compensatingMovement: compensating,
+    };
+  }
+}
+
