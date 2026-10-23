@@ -133,82 +133,6 @@ export const VerificationView: React.FC = () => {
 
         {/* Quick Test Scenarios */}
         <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-slate-400 text-[11px] font-medium mr-1">Verification Scenarios:</span>
-
-          <button
-            onClick={() => {
-              setInvoiceNumberInput('INV-2026-0042');
-              setTamperSimulation(false);
-              handleVerify('INV-2026-0042', false);
-            }}
-            className={`px-2.5 py-1 rounded-lg font-mono text-[11px] font-medium transition-all ${
-              invoiceNumberInput === 'INV-2026-0042' && !tamperSimulation
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            INV-2026-0042 (Approved Sale)
-          </button>
-
-          <button
-            onClick={() => {
-              setInvoiceNumberInput('NL-88402');
-              setTamperSimulation(false);
-              handleVerify('NL-88402', false);
-            }}
-            className={`px-2.5 py-1 rounded-lg font-mono text-[11px] font-medium transition-all ${
-              invoiceNumberInput === 'NL-88402'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            NL-88402 (Wholesaler Purchase)
-          </button>
-
-          <button
-            onClick={() => {
-              setInvoiceNumberInput('INV-WH-500');
-              setTamperSimulation(false);
-              handleVerify('INV-WH-500', false);
-            }}
-            className={`px-2.5 py-1 rounded-lg font-mono text-[11px] font-medium transition-all ${
-              invoiceNumberInput === 'INV-WH-500'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            INV-WH-500 (Multi-Source Reconciled)
-          </button>
-
-          <button
-            onClick={() => {
-              setInvoiceNumberInput('INV-2026-0099');
-              setTamperSimulation(false);
-              handleVerify('INV-2026-0099', false);
-            }}
-            className={`px-2.5 py-1 rounded-lg font-mono text-[11px] font-medium transition-all ${
-              invoiceNumberInput === 'INV-2026-0099'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
-            }`}
-          >
-            INV-2026-0099 (Exceeds Available Stock)
-          </button>
-
-          <button
-            onClick={() => {
-              setInvoiceNumberInput('DISPUTE-7710');
-              setTamperSimulation(false);
-              handleVerify('DISPUTE-7710', false);
-            }}
-            className={`px-2.5 py-1 rounded-lg font-mono text-[11px] font-medium transition-all ${
-              invoiceNumberInput === 'DISPUTE-7710'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
-            }`}
-          >
-            DISPUTE-7710 (Rejected Discrepancy)
-          </button>
 
           <button
             onClick={() => {
@@ -663,36 +587,6 @@ export const VerificationView: React.FC = () => {
                       No matching warehouse ledger entry for SKU {result.sku || 'N/A'}.
                     </div>
                   )}
-                </div>
-
-                {/* Multi-Source Provenance & Upstream Fairness Rules */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex items-center space-x-2 pb-2 border-b border-slate-100">
-                    <Layers className="w-4 h-4 text-indigo-600" />
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Supply Chain Intelligence
-                    </h3>
-                  </div>
-
-                  <div className="space-y-2.5 text-xs">
-                    <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-slate-700 space-y-1">
-                      <span className="font-bold text-indigo-900 block text-xs">
-                        Multi-Source Support
-                      </span>
-                      <p className="text-[11px] text-slate-600 leading-relaxed">
-                        Businesses can acquire product from multiple legitimate distributors (e.g. Distributor A + Distributor B) without automatic single-source lock-in.
-                      </p>
-                    </div>
-
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700 space-y-1">
-                      <span className="font-bold text-slate-900 block text-xs">
-                        Downstream Fairness
-                      </span>
-                      <p className="text-[11px] text-slate-600 leading-relaxed">
-                        Unrelated upstream discrepancies do not automatically invalidate downstream sales. Only directly connected disputed stock triggers review.
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Auditable Decision Record */}
