@@ -73,7 +73,7 @@ interface AppContextType {
   counterparties: BusinessEntity[];
   businessRoles: (BusinessEntity & { roleCategory: string })[];
 
-  // Three-Sheet Architecture & Intelligence State
+  // Inventory, invoice records & intelligence state
   inventoryItems: InventoryItem[];
   inventoryMovements: InventoryMovement[];
   issuedInvoices: IssuedInvoiceRecord[];
@@ -163,7 +163,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  // ── Three-Sheet Architecture State ──
+  // ── Inventory & invoice record state ──
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(() => {
     try {
       const saved = localStorage.getItem('trustlayer_inventory_items');
@@ -636,7 +636,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  // ── Three-Sheet Architecture Actions ──
+  // ── Inventory & invoice record actions ──
   const approveReceivedInvoice = (invoiceId: string, actor: string) => {
     const res = processApproveReceivedInvoice(invoiceId, actor, {
       inventory: inventoryItems,
@@ -860,7 +860,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGlobalSearch,
         resetDemoData,
 
-        // Three-Sheet & Intelligence values
+        // Inventory & intelligence values
         inventoryItems,
         inventoryMovements,
         issuedInvoices,

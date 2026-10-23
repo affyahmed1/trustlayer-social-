@@ -349,9 +349,9 @@ export const VerificationView: React.FC = () => {
                     </h3>
                     <span className="text-[11px] font-mono text-slate-500">
                       {result.transactionType === 'issued'
-                        ? 'Sheet B · Outgoing Sale'
+                        ? 'Outgoing Sale'
                         : result.transactionType === 'received'
-                        ? 'Sheet C · Incoming Purchase'
+                        ? 'Incoming Purchase'
                         : 'Commercial Invoice'}
                     </span>
                   </div>

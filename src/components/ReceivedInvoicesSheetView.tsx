@@ -275,9 +275,6 @@ export const ReceivedInvoicesSheetView: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="text-[10px] font-mono uppercase font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              Sheet C
-            </span>
             <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
               Received Invoices (Purchases)
             </h1>

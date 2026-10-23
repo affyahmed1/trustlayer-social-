@@ -163,7 +163,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/60">
           <div>
             <span className="text-[10px] font-mono uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-              Document Ingestion · {sheetType === 'issued' ? 'Sheet B (Sales)' : 'Sheet C (Purchases)'}
+              Upload Invoice · {sheetType === 'issued' ? 'Sales' : 'Purchases'}
             </span>
             <h3 className="text-lg font-bold text-slate-900 mt-1">
               Upload Official Commercial Invoice
